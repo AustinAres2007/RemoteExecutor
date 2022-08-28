@@ -57,16 +57,15 @@ class RemoteExecutor(socket.socket):
     def start(self) -> None:
         while True:
             client, addr = super().accept()
-            client = Client(client).client
-
-            print(client.__str__())
-
-            print(f"Connection from {addr}")
+            print(f"Connection from {addr[0]}")
 
             while client:
-                command, reply = self.process_client(client=client)
-                client.sendall(reply.encode())
-            
+                try:
+                    command, reply = self.process_client(client=client)
+                    client.sendall(reply.encode())
+                except (ConnectionAbortedError, ConnectionResetError):
+                    client = None
+
 if __name__ == "__main__":
     main()
 
