@@ -77,11 +77,11 @@ class RemoteExecutor(socket.socket):
             while client:
                 try:
                     reply = Message(self.process_client(client=client))
-                    client.sendall(pickle.)
+                    client.sendall(reply.in_bytes())
                 except (ConnectionAbortedError, ConnectionResetError):
                     client = None
                 except AttributeError:
-                    sys.exit(0)
+                    sys.exit(0);
 
 if __name__ == "__main__":
     main()
