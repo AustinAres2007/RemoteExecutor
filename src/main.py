@@ -1,4 +1,4 @@
-import socket, sys, io
+import socket, sys, io, pickle
 from typing import *
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
@@ -30,7 +30,7 @@ class Message(str):
     def __str__(self) -> str:
         return f"Message(str={self.string})"
 
-    def __init__(self, string: str, file: io.FileIO):
+    def __init__(self, string: str, file: io.FileIO=None):
         self.string = string
         self.file = file
     
@@ -77,7 +77,7 @@ class RemoteExecutor(socket.socket):
             while client:
                 try:
                     reply = Message(self.process_client(client=client))
-                    client.sendall(reply.in_bytes())
+                    client.sendall(pickle.)
                 except (ConnectionAbortedError, ConnectionResetError):
                     client = None
                 except AttributeError:
