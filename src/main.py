@@ -1,8 +1,17 @@
-import socket, sys, io, pickle
+import socket, sys, pickle
 from typing import *
+from classes.message import Message
+
+# Don't use this code if you do not like having risks. This script uses Pickle to send class objects.
+# Use at your own risk. (Similar risks to using eval() or exec())
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
+eg_file = open("src\client.py", 'rb')
 
+print(Message("I dunno man!", file=eg_file).size())
+
+eg_file.close()
+sys.exit(1)
 def main():
     HOST = PORT = None
     try:
@@ -21,24 +30,6 @@ def main():
             code_host.start()
 
 # TODO: Handle client error handling (Here)
-
-class Message(str):
-
-    def __repr__(self) -> str:
-        return self.string
-
-    def __str__(self) -> str:
-        return f"Message(str={self.string})"
-
-    def __init__(self, string: str, file: io.FileIO=None):
-        self.string = string
-        self.file = file
-    
-    def size(self) -> int:
-        return sys.getsizeof(self.string)
-    
-    def in_bytes(self) -> bytes:
-        return self.string.encode()
 
 class RemoteExecutor(socket.socket):
     def __str__(self) -> str:
@@ -77,11 +68,11 @@ class RemoteExecutor(socket.socket):
             while client:
                 try:
                     reply = Message(self.process_client(client=client))
-                    client.sendall(reply.in_bytes())
+                    client.sendall(pickle.dumps(reply))
                 except (ConnectionAbortedError, ConnectionResetError):
                     client = None
                 except AttributeError:
-                    sys.exit(0);
+                    sys.exit(0)
 
 if __name__ == "__main__":
     main()
