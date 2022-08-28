@@ -30,7 +30,7 @@ class RemoteExecutor(socket.socket):
     def __init__(self, *args, **kwargs):
         self.command_list = {
             "project": self.file_transfer,
-            "exit": self._close_client
+            "shutdown": lambda *args: self.close
         }
         super().__init__(*args, **kwargs)
 
