@@ -1,4 +1,4 @@
-import socket, os, sys
+import socket, sys, pickle
 
 SERVER_HOST: str = "192.168.1.115"
 SERVER_PORT: int = 2022
@@ -25,7 +25,7 @@ def main():
                 commands[command]()
                 if command not in client_side_only:
                     re_client.sendall(command.encode())
-                    print(re_client.recv(1024).decode('utf-8'))
+                    print(pickle.loads(re_client.recv(4096)))
 
             except KeyError:
                 print(f"{command} is not a client command.")
