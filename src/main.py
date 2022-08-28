@@ -1,4 +1,4 @@
-import socket, sys
+import socket, sys, io
 from typing import *
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
@@ -22,37 +22,52 @@ def main():
 
 # TODO: Handle client error handling (Here)
 
-class Client(socket.socket):
-    def __init__(self, client: socket.socket):
-        self.client = client
+class Message(str):
+
+    def __repr__(self) -> str:
+        return self.string
+
+    def __str__(self) -> str:
+        return f"Message(str={self.string})"
+
+    def __init__(self, string: str, file: io.FileIO):
+        self.string = string
+        self.file = file
+    
+    def size(self) -> int:
+        return sys.getsizeof(self.string)
+    
+    def in_bytes(self) -> bytes:
+        return self.string.encode()
 
 class RemoteExecutor(socket.socket):
+    def __str__(self) -> str:
+        return f"RemoteExecutor(host={self.host}, port={self.port})"
+
     def __init__(self, *args, **kwargs):
         self.command_list = {
             "project": self.file_transfer,
-            "shutdown": lambda *args: self.close
+            "shutdown": lambda *args: self.close(),
+            "status": lambda *args: self.status()
+
         }
         super().__init__(*args, **kwargs)
 
-    def __str__(self):
-        return f"RemoteExecutor(host={self.host}, port={self.port})"
+    def status(self) -> str:
+        return "200"
 
-    def file_transfer(self, command: str, client: Client) -> list[Any, str]:
-        pass
-    
-    def _close_client(self, cmd: str, client: Client):
-        client.close()
-        client = None
+    def file_transfer(self, command: str, client: socket.socket) -> str:
+        return "This command is not finished."
 
-    def process_client(self, client: socket.socket) -> list[str, str]:
+    def process_client(self, client: socket.socket) -> str:
         command = client.recv(1024).decode('utf-8')
         
         try:
-            process, reply = self.command_list[command](command, client)
+            reply = self.command_list[command](command, client)
         except KeyError:
             reply = "Command does not exist."
         
-        return [command, reply]
+        return reply
     
     def start(self) -> None:
         while True:
@@ -61,10 +76,12 @@ class RemoteExecutor(socket.socket):
 
             while client:
                 try:
-                    command, reply = self.process_client(client=client)
-                    client.sendall(reply.encode())
+                    reply = Message(self.process_client(client=client))
+                    client.sendall(reply.in_bytes())
                 except (ConnectionAbortedError, ConnectionResetError):
                     client = None
+                except AttributeError:
+                    sys.exit(0)
 
 if __name__ == "__main__":
     main()
