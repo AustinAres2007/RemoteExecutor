@@ -25,7 +25,7 @@ def main():
                 commands[command]()
                 if command not in client_side_only:
                     re_client.sendall(command.encode())
-                    print(pickle.loads(re_client.recv(4096)))
+                    print(pickle.loads(re_client.recv(1024)))
 
             except KeyError:
                 print(f"{command} is not a client command.")
