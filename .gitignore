@@ -2,4 +2,6 @@
 /Lib/
 /Include/
 /.vscode/
+/bin/
 *.cfg
+*.DS_Store
