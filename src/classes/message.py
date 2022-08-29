@@ -1,5 +1,14 @@
 import sys, io
 
+class File(object):
+    """Represents a File to be send over a network."""
+    def __new__(cls, *args, **kwargs) -> io.TextIOWrapper:
+        return super().__init__(*args, **kwargs)
+    
+    def __init__(self, *args, **kwargs):
+        pass
+
+
 class Message(str):
     """Represents a Message to be send over a network."""
 
@@ -22,3 +31,7 @@ class Message(str):
     
     def in_bytes(self) -> bytes:
         return self.encode()
+
+if __name__ == '__main__':
+    file_obj = File('demo_file.py', 'rb')
+    print(file_obj.what_is_self())

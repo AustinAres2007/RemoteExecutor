@@ -1,17 +1,11 @@
 import socket, sys, pickle
 from typing import *
-from classes.message import Message
+from classes.message import Message, File 
 
 # Don't use this code if you do not like having risks. This script uses Pickle to send class objects.
 # Use at your own risk. (Similar risks to using eval() or exec())
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
-eg_file = open("src\client.py", 'rb')
-
-print(Message("I dunno man!", file=eg_file).size())
-
-eg_file.close()
-sys.exit(1)
 def main():
     HOST = PORT = None
     try:
