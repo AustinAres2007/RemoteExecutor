@@ -1,4 +1,5 @@
 import sys, io, os
+from typing import Union
 
 class File(object):
     """Represents a File to be send over a network."""
@@ -17,7 +18,7 @@ class File(object):
     def mode(self) -> str:
         return self.__file__.mode
 
-    def data(self):
+    def data(self) -> Union[bytes, str]:
         return self.__file__.read()
 
 class Message(str):
