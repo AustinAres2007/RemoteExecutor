@@ -6,19 +6,23 @@ class File(object):
 
     def __repr__(self) -> str:
         return f'<file={self.__file__}, mode="{self.__mode__}"'
-
-    def __init__(self, file, mode, *args, **kwargs):
+    
+    def __init__(self, file, mode, *args, **kwargs) -> None:
+        
         self.__file__ = open(file, mode, *args, **kwargs)
         self.__filesize__ = self.__file__.read().__sizeof__()
         super().__init__()
 
-    def file(self) -> io.BufferedReader:
+    def file(self) -> Union[io.BufferedReader, io.TextIOWrapper]:
+        """Returns the file object for the file provided."""
         return self.__file__
     
     def mode(self) -> str:
+        """Returns the file object mode."""
         return self.__file__.mode
 
     def data(self) -> Union[bytes, str]:
+        """Returns the file object data."""
         return self.__file__.read()
 
 class Message(str):
