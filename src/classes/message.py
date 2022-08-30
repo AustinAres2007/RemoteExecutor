@@ -34,11 +34,8 @@ class Message(str):
     def __str__(self) -> str:
         return f'Message(str={super().__str__()}, file="{self.file}")'
 
-    def __new__(cls, *args, **kwargs):
-        cls.file: File = kwargs['file']
-        del kwargs['file']
-
-        print(cls.file)
+    def __new__(cls, file: File=Nones, *args, **kwargs):
+        cls.file: File = file
 
         return str.__new__(cls, *args, **kwargs)
 

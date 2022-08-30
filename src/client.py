@@ -43,11 +43,9 @@ def main():
                         commands[command]()
                         if command not in client_side_only:
                             re_client.sendall(command.encode())
-                            reply = pickle.loads(re_client.recv(1024))
+                            reply = pickle.loads(re_client.recv(4096))
                             print(reply)
         
-                    except KeyError:
-                        print(f"{command} is not a client command.")
                     except KeyboardInterrupt:
                         return error("Shutting down client.")
 
