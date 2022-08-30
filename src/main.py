@@ -61,7 +61,7 @@ class RemoteExecutor(socket.socket):
 
             while client:
                 try:
-                    reply = Message(self.process_client(client=client))
+                    reply = Message(self.process_client(client=client), file=None)
                     client.sendall(pickle.dumps(reply))
                 except (ConnectionAbortedError, ConnectionResetError):
                     client = None
