@@ -1,4 +1,4 @@
-import socket, os, sys, io
+import socket, os, sys, io, pickle
 from classes.message import Message, File
 
 # TODO: handle file sending
@@ -43,7 +43,7 @@ def main():
                         commands[command]()
                         if command not in client_side_only:
                             re_client.sendall(command.encode())
-                            reply = re_client.recv(1024).decode('utf-8')
+                            reply = pickle.loads(re_client.recv(1024))
                             print(reply)
         
                     except KeyError:

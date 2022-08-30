@@ -63,10 +63,12 @@ class RemoteExecutor(socket.socket):
                 try:
                     reply = Message(self.process_client(client=client), file=None)
                     client.sendall(pickle.dumps(reply))
-                except (ConnectionAbortedError, ConnectionResetError):
+                except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                    print("Client connection Error, disconnecting client.")
                     client = None
                 except AttributeError:
                     sys.exit(0)
+                
 
 if __name__ == "__main__":
     main()
