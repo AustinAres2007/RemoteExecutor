@@ -48,6 +48,10 @@ class RemoteExecutor(socket.socket):
     def file_transfer(self, command: str, client: socket.socket) -> str:
         return "This command is not finished."
 
+    def bind(self, __address) -> None:
+        self.host = __address
+        return super().bind(__address)
+
     def process_client(self, client: socket.socket) -> str:
         command = client.recv(1024).decode('utf-8')
         
@@ -66,10 +70,10 @@ class RemoteExecutor(socket.socket):
 
                 while client:
                     try:
-                        reply = Message(self.process_client(client=client), None)
+                        reply = Message(self.process_client(client=client), None, self.host)
                         client.sendall(pickle.dumps(reply))
                     except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-                        print("Client connection Error, disconnecting client.")
+                        print(f"{addr[0]} Disconnected.")
                         client = None
                     except AttributeError:
                         sys.exit(0)

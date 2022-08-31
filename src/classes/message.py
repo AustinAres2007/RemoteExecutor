@@ -1,12 +1,19 @@
-import sys, io, os
+import io
 from typing import Union
+from inspect import signature
+
+class IPAddress(object):
+    pass
 
 class File(object):
     """Represents a File to be send over a network."""
 
     def __repr__(self) -> str:
-        return f'<file={self.__file__}, mode="{self.__mode__}"'
-    
+        __repr__string = f"{self.__class__.__name__}("
+        [__repr__string + f"{meth}: {getattr(self, meth)}, " for meth in signature(self) if meth != 'self']
+        __repr__string = __repr__string[:-2] + ")"
+
+        return __repr__string
     def __init__(self, file, mode, *args, **kwargs) -> None:
         self.file = file
         self.mode = mode
@@ -29,17 +36,23 @@ class Message(object):
     """Represents a Message to be send over a network."""
 
     def __repr__(self) -> str:
-        return self
+        cls_args = list(signature(Message).parameters)
+        __repr__string = [f"{self.__class__.__name__}("]
+        [__repr__string.append(f"{arg}={getattr(self, arg)}, ") for arg in cls_args if arg != "self"]
 
-    def __str__(self) -> str:
-        return f'Message(message="{self.message}", file={self.file})'
+        __repr__string = "".join(__repr__string)
+        __repr__string = __repr__string[:-2] + ")"
 
-    def __init__(self, message: str=None, file: File=None):
+        return __repr__string
+
+    def __init__(self, message: str=None, file: File=None, sender: IPAddress=None):
         self.message = message
         self.file = file
+        self.sender = sender
 
         super().__init__()
 
 if __name__ == '__main__':
-    file_obj = File(file='demo_file.py', mode='rb')
-    print(file_obj.file())
+    file_obj = Message("Hello World.", None, None)
+
+    print(file_obj)
