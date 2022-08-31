@@ -40,12 +40,6 @@ class Message(object):
 
         super().__init__()
 
-    def size(self) -> int:
-        return sys.getsizeof(self)
-    
-    def in_bytes(self) -> bytes:
-        return self.encode()
-
 if __name__ == '__main__':
     file_obj = File(file='demo_file.py', mode='rb')
     print(file_obj.file())
