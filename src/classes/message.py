@@ -25,7 +25,7 @@ class File(object):
         """Returns the file object data."""
         return self.__file__.read()
 
-class Message(str):
+class Message(object):
     """Represents a Message to be send over a network."""
 
     def __repr__(self) -> str:
@@ -34,13 +34,11 @@ class Message(str):
     def __str__(self) -> str:
         return f'Message(str={super().__str__()}, file="{self.file}")'
 
-    def __new__(cls, *args, **kwargs):
-        undercover_kwargs = kwargs
-        del kwargs['file']
+    def __init__(self, message: str=None, file: File=None):
+        self.message = message
+        self.file = file
 
-        c = str.__new__(cls, *args, **kwargs)
-        c.file: File = undercover_kwargs['file']
-        return c
+        super().__init__()
 
     def size(self) -> int:
         return sys.getsizeof(self)
