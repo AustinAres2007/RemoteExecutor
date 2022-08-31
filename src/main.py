@@ -6,9 +6,13 @@ from classes.message import Message, File
 # Use at your own risk. (Similar risks to using eval() or exec())
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
+
+
 def main():
+
     HOST = PORT = None
     try:
+        print(sys.argv)
         HOST = sys.argv[1]
         PORT = int(sys.argv[2])
     except IndexError:
@@ -56,19 +60,21 @@ class RemoteExecutor(socket.socket):
     
     def start(self) -> None:
         while True:
-            client, addr = super().accept()
-            print(f"Connection from {addr[0]}")
+            try:
+                client, addr = super().accept()
+                print(f"Connection from {addr[0]}")
 
-            while client:
-                try:
-                    reply = Message(self.process_client(client=client), file=None)
-                    client.sendall(pickle.dumps(reply))
-                except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-                    print("Client connection Error, disconnecting client.")
-                    client = None
-                except AttributeError:
-                    sys.exit(0)
-                
+                while client:
+                    try:
+                        reply = Message(self.process_client(client=client), file=None)
+                        client.sendall(pickle.dumps(reply))
+                    except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                        print("Client connection Error, disconnecting client.")
+                        client = None
+                    except AttributeError:
+                        sys.exit(0)
+            except OSError:
+                continue
 
 if __name__ == "__main__":
     main()
