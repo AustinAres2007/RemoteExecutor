@@ -8,22 +8,22 @@ class File(object):
         return f'<file={self.__file__}, mode="{self.__mode__}"'
     
     def __init__(self, file, mode, *args, **kwargs) -> None:
-        
-        self.__file__ = open(file, mode, *args, **kwargs)
-        self.__filesize__ = self.__file__.read().__sizeof__()
+        self.file = file
+        self.mode = mode
+
         super().__init__()
 
     def file(self) -> Union[io.BufferedReader, io.TextIOWrapper]:
         """Returns the file object for the file provided."""
-        return self.__file__
+        return self.file
     
     def mode(self) -> str:
         """Returns the file object mode."""
-        return self.__file__.mode
+        return self.file.mode
 
     def data(self) -> Union[bytes, str]:
         """Returns the file object data."""
-        return self.__file__.read()
+        return self.file.read()
 
 class Message(object):
     """Represents a Message to be send over a network."""
@@ -32,7 +32,7 @@ class Message(object):
         return self
 
     def __str__(self) -> str:
-        return f'Message(message="{self.message}", file="{self.file}")'
+        return f'Message(message="{self.message}", file={self.file})'
 
     def __init__(self, message: str=None, file: File=None):
         self.message = message
