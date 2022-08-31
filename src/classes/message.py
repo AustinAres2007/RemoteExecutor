@@ -32,7 +32,7 @@ class Message(object):
         return self
 
     def __str__(self) -> str:
-        return f'Message(str={super().__str__()}, file="{self.file}")'
+        return f'Message(message="{self.message}", file="{self.file}")'
 
     def __init__(self, message: str=None, file: File=None):
         self.message = message
