@@ -34,17 +34,6 @@ class Message(object):
     """Represents a Message to be send over a network."""
 
     def __repr__(self) -> str:
-        """
-        cls_args = list(signature(Message).parameters)
-        __repr__string = [f"{self.__class__.__name__}("]
-        [__repr__string.append(f"{arg}={getattr(self, arg)}, ") for arg in cls_args if arg != "self"]
-
-        __repr__string = "".join(__repr__string)
-        __repr__string = __repr__string[:-2] + ")"
-
-        return __repr__string
-        """
-
         return make__repr__(Message, self)
 
     def __init__(self, message: Union[str, int, None]=None, file: File=None, sender: IPAddress=None):
