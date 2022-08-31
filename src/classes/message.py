@@ -35,9 +35,11 @@ class Message(str):
         return f'Message(str={super().__str__()}, file="{self.file}")'
 
     def __new__(cls, *args, **kwargs):
-        c = str.__new__(cls, *args, **kwargs)
-        c.file: File = kwargs['file']
+        undercover_kwargs = kwargs
+        del kwargs['file']
 
+        c = str.__new__(cls, *args, **kwargs)
+        c.file: File = undercover_kwargs['file']
         return c
 
     def size(self) -> int:
