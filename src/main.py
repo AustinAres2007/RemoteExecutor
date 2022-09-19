@@ -11,6 +11,7 @@ from git import Repo
 errors = {
     0: "Missing Arguments."
 }
+nl = "\n"
 
 def main():
 
@@ -40,22 +41,31 @@ class RemoteExecutor(socket.socket):
 
     def __init__(self, *args, **kwargs):
         self.command_list = {
-            "status": lambda *a: self.status(*a), 
-            "clone": lambda *a: self.download_repo(*a),
-            "echo": lambda *a: self.echo_to_client(*a),
-            "exit": lambda *a: self.close_connection(*a),
-            "sys": lambda *a: self.terminal_command(*a),
-            "rm": lambda *a: self.remove_repo(*a),
-            "run": lambda *a: self.run_repo(*a)
+            "status": (lambda *a: self.status(*a), "A debug message, good to see if your connected to host.", "status"), 
+            "clone": (lambda *a: self.download_repo(*a), "Clone git repo. (clone <git-link> <name-of-folder-you-want-the-repo-in>)", "clone"),
+            "sys": (lambda *a: self.terminal_command(*a), "Execute a terminal / cmd command. (sys <terminal-cmd> <args-for-cmd>)", "sys"),
+            "rm": (lambda *a: self.remove_repo(*a), "Removes a repo from scripts folder. (rm <name-you-entered-for-repo>)", 'rm'),
+            "run": (lambda *a: self.run_repo(*a), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
+            "!": (lambda *a: self._disconnect_client_gracefully(*a), None, 'internal command'),
+            "help": (lambda *a: self.send_help(*a), "This command.", 'help')
         }
         self.finished = False
         super().__init__(*args, **kwargs)
 
-    def send_message(self, message: str):
-        msg = Message(str(message), None, self.host)
+    def send_message(self, message: str, with_newline=True):
+        msg = Message(str(f"{nl if with_newline else ''}{message}"), None, self.host)
         self.client.sendall(pickle.dumps(msg))
 
     # Server Commands
+    def send_help(self, *args):
+        help_msg = ""
+        for cmd in list(self.command_list.values()):
+            print(cmd)
+            if cmd[1]:
+                help_msg += f"{cmd[2]} - {cmd[1]}\n"
+
+        self.send_message(help_msg, False)
+
     def run_repo(self, *args):
         command = "python3"
         m = "Unknown Error"
@@ -70,11 +80,11 @@ class RemoteExecutor(socket.socket):
             while proc.poll() is None:
                 for line in proc.stdout:
                     time.sleep(0.025)
-                    self.send_message(line.decode())
+                    self.send_message(line.decode(), False)
 
                 for error in proc.stderr:
                     time.sleep(0.025)
-                    self.send_message(error.decode())
+                    self.send_message(error.decode(), False)
             else:
                 m = "Finished Executing."
 
@@ -114,12 +124,9 @@ class RemoteExecutor(socket.socket):
         finally:
             self.send_message(m)
 
-    def close_connection(self, *args):
-        self.close_connection()
-        sys.exit(0)
-
-    def echo_to_client(self, *args):
-        self.send_message(' '.join(args))
+    def _disconnect_client_gracefully(self, *args):
+        self.client.close()
+        self.client = None
 
     def download_repo(self, *args):
         try:
@@ -145,22 +152,21 @@ class RemoteExecutor(socket.socket):
         client_message = client.recv(1024).decode('utf-8').split(' ')
         command = client_message[0]
         args = client_message[1:]
-        self.command_list[command](*args) if command in self.command_list else "This command does not exist."
+        self.command_list[command][0](*args) if command in self.command_list else "This command does not exist."
         
     def start(self) -> None:
         while True:
             try:
                 self.client, addr = super().accept()
                 print(f"Connection from {addr[0]}")
-                self.send_message("""You are using this tool with the knowledge that this tool
+                self.send_message(
+                    """You are using this tool with the knowledge that this tool
                     could be unsafe for public use. DO NOT let a person you do not trust use this tool, 
                     as they can access the host computer with terminal or shell commands."""
                 )
                 while self.client:
                     self.process_client(client=self.client)
                               
-            except OSError:
-                continue
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 print(f"{addr[0]} Disconnected.")
                 self.client = None

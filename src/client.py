@@ -1,5 +1,5 @@
-from curses.ascii import isdigit
-import socket, os, sys, io, pickle
+from ast import expr_context
+import socket, sys, pickle
 from classes.message import Message, File
 from threading import Thread
 # TODO: handle file sending
@@ -7,15 +7,21 @@ def error(string):
     return print(string); sys.exit(1)
 
 def main():
+    global stop
+    stop = False
     # Opens a line of communication between client and host.
     def listen_for_messages():
         buffer_size = 512*512
-
-        while True:
-            reply_data = re_client.recv(buffer_size)
-            reply = pickle.loads(reply_data)
-            print(f"\n{reply.message}")
-
+        stop = False
+        while not stop:
+            try:
+                reply_data = re_client.recv(buffer_size)
+                reply = pickle.loads(reply_data)
+                print(reply.message)
+            except OSError:
+                stop = True
+            except EOFError:
+                return exit_prog()
     try:
         SERVER_HOST: str = sys.argv[1]
         SERVER_PORT: int = int(sys.argv[2])
@@ -24,7 +30,9 @@ def main():
     except ValueError:
         return error("The port parameter is a string type, not integer. (File Argument format: <host-ip> <port>)")
     else:
-            
+        def exit_prog():
+            re_client.sendall("!".encode())
+            return re_client.close()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as re_client:
             try:
     
@@ -32,11 +40,11 @@ def main():
                 commands = {
                         "status": (lambda: None, False),
                         "clone": (lambda: None, False),
-                        "echo": (lambda: None, False),
-                        "exit": (lambda: None, False),
                         "sys": (lambda: None, False),
                         "rm": (lambda: None, False),
-                        "run": (lambda: None, False)
+                        "exit": (lambda: exit_prog(), True),
+                        "run": (lambda: None, False),
+                        "help": (lambda: None, False)
                 }
                 
             except (ConnectionRefusedError, ConnectionError):
@@ -46,7 +54,7 @@ def main():
                 message_thread = Thread(target=listen_for_messages)
                 message_thread.start()
 
-                while True:
+                while not stop:
                     try:
                         command_name = input(f"Send to {SERVER_HOST}:{SERVER_PORT} >>> ")
                         command = commands[command_name.split(' ')[0]]
@@ -54,8 +62,11 @@ def main():
 
                         if not command[1]:
                             re_client.sendall(command_name.encode())
+                        else:
+                            stop = True
         
                     except KeyboardInterrupt:
+                        exit_prog()
                         return error("Shutting down client.")
                     except KeyError:
                         print("Specified command does not exist.")
