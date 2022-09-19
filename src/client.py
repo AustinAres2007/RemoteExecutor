@@ -9,19 +9,12 @@ def error(string):
 def main():
     # Opens a line of communication between client and host.
     def listen_for_messages():
-        recv_type = 1
-        buffer_size = 4096
+        buffer_size = 512*512
 
         while True:
-            print("", end=" ")
             reply_data = re_client.recv(buffer_size)
-            if recv_type:
-                buffer_size = int(reply_data.decode())
-                recv_type = 0
-            else:
-                reply = pickle.loads(reply_data)
-                print(f"\n{reply.message}")
-                recv_type = 1
+            reply = pickle.loads(reply_data)
+            print(f"\n{reply.message}")
 
     try:
         SERVER_HOST: str = sys.argv[1]
@@ -38,10 +31,12 @@ def main():
                 re_client.connect((SERVER_HOST, SERVER_PORT))
                 commands = {
                         "status": (lambda: None, False),
-                        "download": (lambda: None, False),
+                        "clone": (lambda: None, False),
                         "echo": (lambda: None, False),
                         "exit": (lambda: None, False),
-                        "sys": (lambda: None, False)
+                        "sys": (lambda: None, False),
+                        "rm": (lambda: None, False),
+                        "run": (lambda: None, False)
                 }
                 
             except (ConnectionRefusedError, ConnectionError):

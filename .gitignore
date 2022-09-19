@@ -3,6 +3,7 @@
 /Include/
 /.vscode/
 /bin/
+/src/scripts/*
 __pycache__
 *.cfg
 *.DS_Store
