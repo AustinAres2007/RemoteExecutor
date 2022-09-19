@@ -12,6 +12,9 @@ errors = {
     0: "Missing Arguments."
 }
 nl = "\n"
+file = open("src/connection_message.txt")
+conn_message = file.read()
+file.close()
 
 def main():
 
@@ -31,7 +34,7 @@ def main():
 
             code_host.start()
         except OSError:
-            return print("Cannot connect to given port. Try again in about 15 seconds.")
+            return print("Cannot connect to given port. Try again soon.")
 
 # TODO: Handle client error handling (Here)
 
@@ -60,11 +63,10 @@ class RemoteExecutor(socket.socket):
     def send_help(self, *args):
         help_msg = ""
         for cmd in list(self.command_list.values()):
-            print(cmd)
             if cmd[1]:
                 help_msg += f"{cmd[2]} - {cmd[1]}\n"
 
-        self.send_message(help_msg, False)
+        self.send_message(help_msg)
 
     def run_repo(self, *args):
         command = "python3"
@@ -75,7 +77,7 @@ class RemoteExecutor(socket.socket):
             sys_argv = args[1:]
             sargs = [command, execute_path]+list(sys_argv)
 
-            proc = subprocess.Popen(' '.join(sargs), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(' '.join(sargs), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
             
             while proc.poll() is None:
                 for line in proc.stdout:
@@ -85,6 +87,10 @@ class RemoteExecutor(socket.socket):
                 for error in proc.stderr:
                     time.sleep(0.025)
                     self.send_message(error.decode(), False)
+                
+                for input in proc.stdin:
+                    time.sleep(0.025)
+                    self.send_message(input.decode(), False)
             else:
                 m = "Finished Executing."
 
@@ -159,11 +165,7 @@ class RemoteExecutor(socket.socket):
             try:
                 self.client, addr = super().accept()
                 print(f"Connection from {addr[0]}")
-                self.send_message(
-                    """You are using this tool with the knowledge that this tool
-                    could be unsafe for public use. DO NOT let a person you do not trust use this tool, 
-                    as they can access the host computer with terminal or shell commands."""
-                )
+                self.send_message(conn_message)
                 while self.client:
                     self.process_client(client=self.client)
                               

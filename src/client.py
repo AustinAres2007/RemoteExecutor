@@ -1,10 +1,13 @@
-from ast import expr_context
 import socket, sys, pickle
 from classes.message import Message, File
 from threading import Thread
+from os import system
+
 # TODO: handle file sending
 def error(string):
     return print(string); sys.exit(1)
+
+system('clear')
 
 def main():
     global stop
@@ -56,7 +59,7 @@ def main():
 
                 while not stop:
                     try:
-                        command_name = input(f"Send to {SERVER_HOST}:{SERVER_PORT} >>> ")
+                        command_name = input()
                         command = commands[command_name.split(' ')[0]]
                         command[0]()
 
@@ -69,7 +72,7 @@ def main():
                         exit_prog()
                         return error("Shutting down client.")
                     except KeyError:
-                        print("Specified command does not exist.")
+                        print("\nSpecified command does not exist.\n")
 
 if __name__ == "__main__":
     main()
