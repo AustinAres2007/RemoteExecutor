@@ -1,7 +1,7 @@
-import socket, sys, pickle, os, shutil, subprocess, time
+import socket, sys, pickle, os, shutil, subprocess, time, git
 from typing import *
 from classes.message import *
-#from git import Repo
+from git import Repo
 from threading import Thread
 
 
@@ -10,11 +10,12 @@ from threading import Thread
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
 errors = {
-    0: "Missing Arguments."
+    0: "Missing Arguments.",
+    1: "Unknown Error."
 }
-print(os.getcwd())
+
 nl = "\n"
-file = open("connection_message.txt")
+file = open("src/connection_message.txt")
 conn_message = file.read()
 file.close()
 
@@ -28,15 +29,13 @@ def main():
 
     print(f"~ Details ~\n\nHost IP: {HOST}\nHost Port: {PORT}\n")
     with RemoteExecutor(socket.AF_INET, socket.SOCK_STREAM) as code_host:
-        try:
-            code_host.bind((HOST, PORT))
-            code_host.listen(1)
+        code_host.bind((HOST, PORT))
+        code_host.listen(1)
 
-            print('Host listening for incoming connections.')
+        print('Host listening for incoming connections.')
 
-            code_host.start()
-        except OSError:
-            return print("Cannot connect to given port. Try again soon.")
+        code_host.start()
+
 
 # TODO: Handle client error handling (Here)
 
@@ -45,16 +44,22 @@ class RemoteExecutor(socket.socket):
         return f"RemoteExecutor(host={self.host}, port={self.port})"
 
     def __init__(self, *args, **kwargs):
+        # Format for adding new commands: <command-name>: (func, "help message", "name-to-be-shown-at-help-message")
+        # If None is entered in the help message, it is considered private, and will not be shown in the help command.
+
         self.command_list = {
             "status": (lambda *a: self.status(*a), "A debug message, good to see if your connected to host.", "status"), 
             "clone": (lambda *a: self.download_repo(*a), "Clone git repo. (clone <git-link> <name-of-folder-you-want-the-repo-in>)", "clone"),
             "sys": (lambda *a: self.terminal_command(*a), "Execute a terminal / cmd command. (sys <terminal-cmd> <args-for-cmd>)", "sys"),
             "rm": (lambda *a: self.remove_repo(*a), "Removes a repo from scripts folder. (rm <name-you-entered-for-repo>)", 'rm'),
-            "run": (lambda *a: Thread(target=self.run_repo, args=(*a,).start()), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
+            "run": (lambda *a: self._execute_repo_thread(*a), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
             "!": (lambda *a: self._disconnect_client_gracefully(*a), None, 'internal command'),
-            "help": (lambda *a: self.send_help(*a), "This command.", 'help')
+            "help": (lambda *a: self.send_help(*a), "This command.", 'help'),
+            "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
+            "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos')
         }
-        self.finished = self.running = False
+        self.finished = False
+        self.proc = None
         super().__init__(*args, **kwargs)
 
     def send_message(self, message: str, with_newline=True):
@@ -62,6 +67,16 @@ class RemoteExecutor(socket.socket):
         self.client.sendall(pickle.dumps(msg))
 
     # Server Commands
+    def show_repos(self, *args):
+        self.send_message('\n'.join([r for r in os.listdir("src/scripts") if os.path.isdir(f"src/scripts/{r}")]))
+
+    def terminate_executing_script(self, *a):
+        if self.proc:
+            self.proc.kill()
+            self.send_message("Terminated the script.")
+        else:
+            self.send_message("No script running.")
+
     def send_help(self, *args):
         help_msg = ""
         for cmd in list(self.command_list.values()):
@@ -69,34 +84,45 @@ class RemoteExecutor(socket.socket):
                 help_msg += f"{cmd[2]} - {cmd[1]}\n"
 
         self.send_message(help_msg)
+    
+    def _execute_repo_thread(self, *a):
+        Thread(target=self.run_repo, args=(*a,)).start()
 
     def run_repo(self, *args):
         command = "python3"
-        m = "Unknown Error"
+        m = errors[1]
 
         try:
-            execute_path = f"src/scripts/{args[0]}"
-            sys_argv = args[1:]
-            sargs = [command, execute_path]+list(sys_argv)
+            if not args[0]:
+                raise IndexError()
 
-            self.proc = subprocess.Popen(' '.join(sargs), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.running = True
+            print(args)
+
+            host_folder = args[0].split("/")
+            sargs = ' '.join([command]+list(host_folder[1:])+list(args[1:]))
             
-            while self.proc.poll() is None:
-                for line in self.proc.stdout:
-                    time.sleep(0.025)
-                    self.send_message(line.decode(), False)
-
-                for error in self.proc.stderr:
-                    time.sleep(0.025)
-                    self.send_message(error.decode(), False)
+            print(sargs)
+            if len(sargs) <= 7:
+                m = f"You cannot provide just the repo name, you also need an entry point (Example: {host_folder[0]}/main.py, not just {host_folder[0]})"
             else:
-                self.running = False
-                m = "Finished Executing."
+
+                self.proc = subprocess.Popen(sargs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=f"src/scripts/{host_folder[0]}")
+                
+                while self.proc.poll() is None:
+                    for line in self.proc.stdout:
+                        time.sleep(0.025)
+                        self.send_message(line.decode(), False)
+
+                    for error in self.proc.stderr:
+                        time.sleep(0.025)
+                        self.send_message(error.decode(), False)
+                else:
+                    m = "Finished Executing."
 
         except IndexError:
             m = errors[0]
         finally:
+            self.proc = None
             self.send_message(m)
 
     def remove_repo(self, *args):
@@ -112,7 +138,7 @@ class RemoteExecutor(socket.socket):
             self.send_message(m)
 
     def terminal_command(self, *args):
-        m = None
+        m = errors[1]
         try:
             allowed_commands = [
                 "ls",
@@ -130,22 +156,32 @@ class RemoteExecutor(socket.socket):
             self.send_message(m)
 
     def _disconnect_client_gracefully(self, *args):
+        print(f"{self.client.getpeername()} has disconnected.")
+
         self.client.close()
         self.client = None
 
     def download_repo(self, *args):
+        m = errors[1]
         try:
             repo = args[0]
             saved_as = args[1]
+        
+            if os.path.exists(f"src/scripts/{saved_as}"):
+                m = "Repo with that folder name already exists."
+            else:
+                self.send_message(f'Attempting to download "{repo}"..')
+                os.mkdir(f"src/scripts/{saved_as}")
+                Repo.clone_from(repo, f'src/scripts/{saved_as}')
+                m = f'Finished downloading "{repo}".\nTo run, use "run {saved_as}"'
         except IndexError:
-            return self.send_message(errors[0])
-
-        self.send_message(f'Downloading "{repo}"..')
-        os.mkdir(f"src/scripts/{saved_as}")
-        Repo.clone_from(repo, f'src/scripts/{saved_as}')
-
-        self.send_message(f'Finished downloading "{repo}".\nTo run, use "run {saved_as}"')
-
+            m = errors[0]
+        except git.exc.GitCommandError:
+            os.rmdir(f"src/scripts/{saved_as}")
+            m = "No repo exists with that name."
+        finally:
+            self.send_message(m)
+            
     def status(self, *args):
         self.send_message("200")
 

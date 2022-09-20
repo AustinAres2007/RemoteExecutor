@@ -47,7 +47,9 @@ def main():
                         "rm": (lambda: None, False),
                         "exit": (lambda: exit_prog(), True),
                         "run": (lambda: None, False),
-                        "help": (lambda: None, False)
+                        "help": (lambda: None, False),
+                        "terminate": (lambda: None, False),
+                        "repos": (lambda: None, False)
                 }
                 
             except (ConnectionRefusedError, ConnectionError):
