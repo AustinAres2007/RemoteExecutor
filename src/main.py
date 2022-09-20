@@ -1,7 +1,8 @@
 import socket, sys, pickle, os, shutil, subprocess, time
 from typing import *
 from classes.message import *
-from git import Repo
+#from git import Repo
+from threading import Thread
 
 
 # Don't use this code if you do not like having risks. This script uses Pickle to send class objects.
@@ -11,8 +12,9 @@ from git import Repo
 errors = {
     0: "Missing Arguments."
 }
+print(os.getcwd())
 nl = "\n"
-file = open("src/connection_message.txt")
+file = open("connection_message.txt")
 conn_message = file.read()
 file.close()
 
@@ -48,11 +50,11 @@ class RemoteExecutor(socket.socket):
             "clone": (lambda *a: self.download_repo(*a), "Clone git repo. (clone <git-link> <name-of-folder-you-want-the-repo-in>)", "clone"),
             "sys": (lambda *a: self.terminal_command(*a), "Execute a terminal / cmd command. (sys <terminal-cmd> <args-for-cmd>)", "sys"),
             "rm": (lambda *a: self.remove_repo(*a), "Removes a repo from scripts folder. (rm <name-you-entered-for-repo>)", 'rm'),
-            "run": (lambda *a: self.run_repo(*a), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
+            "run": (lambda *a: Thread(target=self.run_repo, args=(*a,).start()), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
             "!": (lambda *a: self._disconnect_client_gracefully(*a), None, 'internal command'),
             "help": (lambda *a: self.send_help(*a), "This command.", 'help')
         }
-        self.finished = False
+        self.finished = self.running = False
         super().__init__(*args, **kwargs)
 
     def send_message(self, message: str, with_newline=True):
@@ -77,21 +79,19 @@ class RemoteExecutor(socket.socket):
             sys_argv = args[1:]
             sargs = [command, execute_path]+list(sys_argv)
 
-            proc = subprocess.Popen(' '.join(sargs), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+            self.proc = subprocess.Popen(' '.join(sargs), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.running = True
             
-            while proc.poll() is None:
-                for line in proc.stdout:
+            while self.proc.poll() is None:
+                for line in self.proc.stdout:
                     time.sleep(0.025)
                     self.send_message(line.decode(), False)
 
-                for error in proc.stderr:
+                for error in self.proc.stderr:
                     time.sleep(0.025)
                     self.send_message(error.decode(), False)
-                
-                for input in proc.stdin:
-                    time.sleep(0.025)
-                    self.send_message(input.decode(), False)
             else:
+                self.running = False
                 m = "Finished Executing."
 
         except IndexError:
@@ -121,8 +121,7 @@ class RemoteExecutor(socket.socket):
                 "pip"
             ]
             if args[0] in allowed_commands:
-                command = ' '.join(args)
-                m = os.popen(command).read()
+                m = os.popen(' '.join(args)).read()
             else:
                 m = "Command does not exist or is not allowed."
         except IndexError:
