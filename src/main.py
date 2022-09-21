@@ -1,9 +1,10 @@
-import socket, sys, pickle, os, shutil, subprocess, time, git
+import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
 from typing import *
 from classes.message import *
 from git import Repo
 from threading import Thread
 
+config_object = config.Config("src/host-config.cfg")
 
 # Don't use this code if you do not like having risks. This script uses Pickle to send class objects.
 # Use at your own risk. (Similar risks to using eval() or exec())
@@ -11,8 +12,19 @@ from threading import Thread
 # I do not bother to use asyncio. This is meant for one connection at a time.
 errors = {
     0: "Missing Arguments.",
-    1: "Unknown Error."
+    1: "Unknown Error.",
+    2: "No repo with that name."
 }
+
+allowed_commands = [
+                "ls",
+                "ifconfig",
+                "pwd",
+                "pip",
+                "touch"
+]
+
+__AUTHOR__ = "Navid Rohim"
 
 nl = "\n"
 file = open("src/connection_message.txt")
@@ -28,6 +40,7 @@ def main():
         return print("Port is a String, not Integer.")
 
     print(f"~ Details ~\n\nHost IP: {HOST}\nHost Port: {PORT}\n")
+     
     with RemoteExecutor(socket.AF_INET, socket.SOCK_STREAM) as code_host:
         code_host.bind((HOST, PORT))
         code_host.listen(1)
@@ -62,13 +75,17 @@ class RemoteExecutor(socket.socket):
         self.proc = None
         super().__init__(*args, **kwargs)
 
-    def send_message(self, message: str, with_newline=True):
+    def send_message(self, message: str, with_newline=True, raw=False):
         msg = Message(str(f"{nl if with_newline else ''}{message}"), None, self.host)
-        self.client.sendall(pickle.dumps(msg))
+        self.client.sendall(pickle.dumps(msg) if not raw else message.encode())
+
+    def wait_for_input(self, keyword: str) -> list[bool, str]:
+        input = self.client.recv(1024).decode()
+        return [True, input] if str(input) == str(keyword) else [False, input]
 
     # Server Commands
     def show_repos(self, *args):
-        self.send_message('\n'.join([r for r in os.listdir("src/scripts") if os.path.isdir(f"src/scripts/{r}")]))
+        self.send_message('\n'.join([r for r in os.listdir("src/scripts") if os.path.isdir(f"src/scripts/{r}")])+"\n..")
 
     def terminate_executing_script(self, *a):
         if self.proc:
@@ -96,12 +113,9 @@ class RemoteExecutor(socket.socket):
             if not args[0]:
                 raise IndexError()
 
-            print(args)
-
             host_folder = args[0].split("/")
             sargs = ' '.join([command]+list(host_folder[1:])+list(args[1:]))
             
-            print(sargs)
             if len(sargs) <= 7:
                 m = f"You cannot provide just the repo name, you also need an entry point (Example: {host_folder[0]}/main.py, not just {host_folder[0]})"
             else:
@@ -121,6 +135,8 @@ class RemoteExecutor(socket.socket):
 
         except IndexError:
             m = errors[0]
+        except FileNotFoundError:
+            m = errors[2]
         finally:
             self.proc = None
             self.send_message(m)
@@ -133,19 +149,13 @@ class RemoteExecutor(socket.socket):
         except IndexError:
             m = errors[0]
         except OSError:
-            m = "Repo does not exist."
+            m = errors[2]
         finally:
             self.send_message(m)
 
     def terminal_command(self, *args):
         m = errors[1]
         try:
-            allowed_commands = [
-                "ls",
-                "ifconfig",
-                "pwd",
-                "pip"
-            ]
             if args[0] in allowed_commands:
                 m = os.popen(' '.join(args)).read()
             else:
@@ -178,7 +188,7 @@ class RemoteExecutor(socket.socket):
             m = errors[0]
         except git.exc.GitCommandError:
             os.rmdir(f"src/scripts/{saved_as}")
-            m = "No repo exists with that name."
+            m = errors[2]
         finally:
             self.send_message(m)
             
@@ -196,16 +206,37 @@ class RemoteExecutor(socket.socket):
         self.command_list[command][0](*args) if command in self.command_list else "This command does not exist."
         
     def start(self) -> None:
+        def next_client():
+            self.client.close()
+            self.client = None
+            
         while True:
             try:
                 self.client, addr = super().accept()
                 print(f"Connection from {addr[0]}")
-                self.send_message(conn_message)
+
+                client_version = self.wait_for_input(config_object['VERSION'])
+
+                if not client_version[0]:
+                    self.send_message("Incorrect client version.", raw=True)
+                    next_client(); continue
+                self.send_message("True", raw=True)
+
+                client_password = self.wait_for_input(config_object['PASSWORD'])
+                if not client_password[0]:
+                    self.send_message("Incorrect Password.", raw=True)
+                    next_client(); continue
+                self.send_message("True", raw=True)
+
+                self.client_info = {'ver': client_version[1], 'password': client_password[1]}
+                time.sleep(0.01)
+
+                self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}")
                 while self.client:
                     self.process_client(client=self.client)
                               
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-                print(f"{addr[0]} Disconnected.")
+                print(f"{addr[0]} Disconnected Forcefully.")
                 self.client = None
             except AttributeError:
                 sys.exit(0)
