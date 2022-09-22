@@ -141,12 +141,12 @@ class RemoteExecutor(socket.socket):
                 raise IndexError()
 
             host_folder = args[0].split("/")
-            sargs = ' '.join([command]+list(host_folder[1:])+list(args[1:]))
+            sargs = ' '.join([command]+['/'.join(host_folder[1:])]+list(args[1:]))
             
             if len(sargs) <= 7:
                 m = f"You cannot provide just the repo name, you also need an entry point (Example: {host_folder[0]}/main.py, not just {host_folder[0]})"
             else:
-
+                print(sargs, host_folder, args)
                 self.proc = subprocess.Popen(sargs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=f"src/scripts/{host_folder[0]}")
                 
                 while self.proc.poll() is None:
