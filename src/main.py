@@ -1,4 +1,5 @@
-import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
+import socket, sys, pickle, os, shutil, subprocess, time, git, config
+from struct import pack
 from typing import *
 from classes.message import *
 from git import Repo
@@ -21,7 +22,8 @@ allowed_commands = [
                 "ifconfig",
                 "pwd",
                 "pip",
-                "touch"
+                "touch",
+                "source"
 ]
 
 __AUTHOR__ = "Navid Rohim"
@@ -69,7 +71,8 @@ class RemoteExecutor(socket.socket):
             "!": (lambda *a: self._disconnect_client_gracefully(*a), None, 'internal command'),
             "help": (lambda *a: self.send_help(*a), "This command.", 'help'),
             "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
-            "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos')
+            "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos'),
+            "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg")
         }
         self.finished = False
         self.proc = None
@@ -84,6 +87,30 @@ class RemoteExecutor(socket.socket):
         return [True, input] if str(input) == str(keyword) else [False, input]
 
     # Server Commands
+
+    def package_manager(self, *args):
+        m = errors[1]
+        try:
+            sub_command = args[0]
+            package = args[1]
+            repo = args[2]
+            if not os.path.exists(f"src/dependencies/{repo}") and sub_command == "install":
+                os.mkdir(f"src/dependencies/{repo}")
+            
+            if sub_command == "install":
+                os.mkdir(f"src/dependencies/{repo}/{package}")
+                self.terminal_command(*(f"source bin/activate && pip install -t src/dependencies/{repo}/{package} {package}",), quiet=True, absolute=True)
+                m = f"Installed {package}"
+            elif sub_command == "uninstall":
+                shutil.rmtree(f"src/dependencies/{repo}/{package}")
+                m = f"Removed {package}."
+            else:
+                pass
+        except IndexError:
+            m = errors[0]
+        finally:
+            self.send_message(m)
+
     def show_repos(self, *args):
         self.send_message('\n'.join([r for r in os.listdir("src/scripts") if os.path.isdir(f"src/scripts/{r}")])+"\n..")
 
@@ -153,17 +180,19 @@ class RemoteExecutor(socket.socket):
         finally:
             self.send_message(m)
 
-    def terminal_command(self, *args):
+    def terminal_command(self, *args, quiet=False, absolute=False):
         m = errors[1]
+        print(args)
         try:
-            if args[0] in allowed_commands:
+            if args[0] in allowed_commands or absolute:
                 m = os.popen(' '.join(args)).read()
             else:
                 m = "Command does not exist or is not allowed."
         except IndexError:
             m = errors[0]
         finally:
-            self.send_message(m)
+            if not quiet:
+                self.send_message(m)
 
     def _disconnect_client_gracefully(self, *args):
         print(f"{self.client.getpeername()} has disconnected.")

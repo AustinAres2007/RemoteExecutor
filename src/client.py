@@ -26,12 +26,12 @@ class RemoteExecutorClient:
 
         self.send(__VERSION__)
         version_conf = self.host.recv(BUFFER).decode()
-        
+
         if not version_conf == 'True':
             self.exit_prog()
             return error(version_conf)
 
-        self.send(input("Host Password: "))
+        self.send(input("Host Password (If not needed, press enter): "))
         password_conf = self.host.recv(BUFFER).decode()
 
         if not password_conf == 'True':
@@ -77,7 +77,8 @@ class RemoteExecutorClient:
                             "run": (lambda: None, False),
                             "help": (lambda: None, False),
                             "terminate": (lambda: None, False),
-                            "repos": (lambda: None, False)
+                            "repos": (lambda: None, False),
+                            "pkg": (lambda: None, False)
                     }
                     
                 except (ConnectionRefusedError, ConnectionError):
