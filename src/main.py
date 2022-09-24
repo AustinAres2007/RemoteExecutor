@@ -1,7 +1,5 @@
+from multiprocessing.sharedctypes import Value
 import socket, sys, pickle, os, shutil, subprocess, time, git, config
-from tkinter import E
-from struct import pack
-from typing import *
 from classes.message import *
 from git import Repo
 from threading import Thread
@@ -19,19 +17,20 @@ config_object = config.Config("src/host-config.cfg")
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
 
+# Commonly used errors
 errors = {
     0: "Missing Arguments.",
     1: "Unknown Error.",
     2: "No repo with that name."
 }
-
+os_errors = {
+    17: "Package already exists."
+}
+# Commands allowed in "sys" command
 allowed_commands = [
                 "ls",
                 "ifconfig",
-                "pwd",
-                "pip",
-                "touch",
-                "source"
+                "pwd"
 ]
 
 __AUTHOR__ = "Navid Rohim"
@@ -102,24 +101,51 @@ class RemoteExecutor(socket.socket):
     # Server Commands
 
     def package_manager(self, *args):
-        m = errors[1]
-        try:
-            sub_command = args[0]
-            package = args[1]
-            repo = args[2]
-            
-            if sub_command == "install":
+        m = None
+        
+        def _install_package(package: str, repo: str) -> str:
+            # TODO: Fix naming scheme for package folders (A-B + _)
+
+            try:
                 os.mkdir(f"src/dependencies/{repo}/{package}")
                 self.terminal_command(*(f"source bin/activate && pip install -t src/dependencies/{repo}/{package} {package}",), quiet=True, absolute=True)
-                m = f"Installed {package}"
-            elif sub_command == "uninstall":
-                shutil.rmtree(f"src/dependencies/{repo}/{package}")
-                m = f"Removed {package}."
-            else:
-                m = "Not a pkg sub-command. (Install, Uninstall)"
+                return f"Installed {package}"
+            except OSError as err:
+                return os_errors[int(err.errno)]
 
-        except IndexError:
-            m = errors[0]
+        def _uninstall_package(package: str, repo: str) -> str:
+            shutil.rmtree(f"src/dependencies/{repo}/{package}")
+            return f"Removed {package}."
+
+        def _show_ops():
+            return "opts - shows all pkg options\ninstall - Installs a package from PyPi\nuninstall - Removes a package\nshow - Shows all packages installed"
+
+        def _show_repos(repo, _) -> str:
+            try:
+                return '\n'.join([f"{DEP_LOCATION}/{repo}/{r} (When used in a command: {r})" for r in os.listdir(f"{DEP_LOCATION}/{repo}") if os.path.isdir(f"{DEP_LOCATION}/{repo}/{r}")])
+            except FileNotFoundError:
+                return errors[2]
+        commands = {
+            "install": _install_package,
+            "uninstall": _uninstall_package,
+            "show": _show_repos
+        }
+        commands_noargs = {
+            "opts": _show_ops
+        }   
+        help = "pkg [install || uninstall || opts] <pip-package || None> <repo || None>"
+        try:
+            sub_command = args[0].lower()    
+            if sub_command in list(commands_noargs):
+                m = commands_noargs[sub_command]()
+            elif sub_command in list(commands):
+                A0, A1 = args[1:]
+                m = commands[sub_command](A0, A1)
+            else:
+                m = f"Unknown option. {help}"
+
+        except (IndexError, ValueError):
+            m = f"{errors[0]} {help}"
         finally:
             self.send_message(m)
 
@@ -300,7 +326,11 @@ class RemoteExecutor(socket.socket):
                 self.client = None
             except AttributeError:
                 sys.exit(0)
+
 if __name__ == "__main__":
-    main()
+    if float(sys.version.split(" ")[0][:1]) < 3.10 and sys.platform == "darwin":
+        main()
+    else:
+        print("Either Python version is too old (3.10 and newer) or you are not running MacOS.")
 
         
