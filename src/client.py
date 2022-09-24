@@ -82,7 +82,7 @@ class RemoteExecutorClient:
                     }
                     
                 except (ConnectionRefusedError, ConnectionError):
-                    return self.error("Server refused connection / the server does not exist.")
+                    return error("Server refused connection / the server does not exist.")
                 
                 else:
                     con = self.connection_protocol()

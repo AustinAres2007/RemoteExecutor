@@ -1,9 +1,16 @@
 import socket, sys, pickle, os, shutil, subprocess, time, git, config
+from tkinter import E
 from struct import pack
 from typing import *
 from classes.message import *
 from git import Repo
 from threading import Thread
+from sysconfig import get_paths
+
+REPO_LOCATION = "src/scripts"
+DEP_LOCATION = "src/dependencies" # Not Johnny Depp
+SITE_PACKAGES = get_paths()["purelib"]
+CURRENT_DIRECTORY = os.getcwd()
 
 config_object = config.Config("src/host-config.cfg")
 
@@ -11,6 +18,7 @@ config_object = config.Config("src/host-config.cfg")
 # Use at your own risk. (Similar risks to using eval() or exec())
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
+
 errors = {
     0: "Missing Arguments.",
     1: "Unknown Error.",
@@ -32,6 +40,11 @@ nl = "\n"
 file = open("src/connection_message.txt")
 conn_message = file.read()
 file.close()
+
+"""Removes a path and it's sub-directories, can take multiple paths. (Uses shutil.rmtree and it's arguments)"""
+def remove_many(paths: list, *args, **kwargs):
+    for path in paths:
+        shutil.rmtree(path, *args, **kwargs)
 
 def main():
 
@@ -94,8 +107,6 @@ class RemoteExecutor(socket.socket):
             sub_command = args[0]
             package = args[1]
             repo = args[2]
-            if not os.path.exists(f"src/dependencies/{repo}") and sub_command == "install":
-                os.mkdir(f"src/dependencies/{repo}")
             
             if sub_command == "install":
                 os.mkdir(f"src/dependencies/{repo}/{package}")
@@ -105,7 +116,8 @@ class RemoteExecutor(socket.socket):
                 shutil.rmtree(f"src/dependencies/{repo}/{package}")
                 m = f"Removed {package}."
             else:
-                pass
+                m = "Not a pkg sub-command. (Install, Uninstall)"
+
         except IndexError:
             m = errors[0]
         finally:
@@ -133,6 +145,8 @@ class RemoteExecutor(socket.socket):
         Thread(target=self.run_repo, args=(*a,)).start()
 
     def run_repo(self, *args):
+        # TODO: Test if file arguments work
+
         command = "python3"
         m = errors[1]
 
@@ -143,11 +157,17 @@ class RemoteExecutor(socket.socket):
             host_folder = args[0].split("/")
             sargs = ' '.join([command]+['/'.join(host_folder[1:])]+list(args[1:]))
             
-            if len(sargs) <= 7:
-                m = f"You cannot provide just the repo name, you also need an entry point (Example: {host_folder[0]}/main.py, not just {host_folder[0]})"
+            REPO_NAME = host_folder[0]
+            _paths = [f"{CURRENT_DIRECTORY}/{DEP_LOCATION}/{REPO_NAME}/{d}" for d in os.listdir(f"src/dependencies/{REPO_NAME}") if os.path.isdir(f"src/dependencies/{REPO_NAME}/{d}")]
+            packages = '\n'.join(_paths)
+
+            with open(f"{SITE_PACKAGES}/script_dependencies.pth", "w+") as s_d:
+                s_d.write(packages)
+
+            if sargs.strip() == command:
+                m = "Enter a valid full path to a python executable."
             else:
-                print(sargs, host_folder, args)
-                self.proc = subprocess.Popen(sargs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=f"src/scripts/{host_folder[0]}")
+                self.proc = subprocess.Popen(sargs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=f"src/scripts/{REPO_NAME}")
                 
                 while self.proc.poll() is None:
                     for line in self.proc.stdout:
@@ -172,7 +192,8 @@ class RemoteExecutor(socket.socket):
         try:
             repo = args[0]
             m = f'Removed the repo "{repo}"'
-            shutil.rmtree(f"src/scripts/{repo}")
+            remove_many([f"{REPO_LOCATION}/{repo}", f"{DEP_LOCATION}/{repo}"], ignore_errors=True)
+
         except IndexError:
             m = errors[0]
         except OSError:
@@ -203,16 +224,25 @@ class RemoteExecutor(socket.socket):
     def download_repo(self, *args):
         m = errors[1]
         try:
+
             repo = args[0]
             saved_as = args[1]
         
             if os.path.exists(f"src/scripts/{saved_as}"):
                 m = "Repo with that folder name already exists."
             else:
-                self.send_message(f'Attempting to download "{repo}"..')
-                os.mkdir(f"src/scripts/{saved_as}")
-                Repo.clone_from(repo, f'src/scripts/{saved_as}')
-                m = f'Finished downloading "{repo}".\nTo run, use "run {saved_as}"'
+                try:
+                    self.send_message(f'Attempting to download "{repo}"..')
+                    os.mkdir(f"{REPO_LOCATION}/{saved_as}")
+                    os.mkdir(f"{DEP_LOCATION}/{saved_as}")
+
+                    Repo.clone_from(repo, f'src/scripts/{saved_as}')
+                    m = f'Finished downloading "{repo}".'
+
+                except Exception as e:
+                    m = f"Could not clone repo, error: {e}"
+                    remove_many([f"{REPO_LOCATION}/{saved_as}", f"{DEP_LOCATION}/{saved_as}"])
+
         except IndexError:
             m = errors[0]
         except git.exc.GitCommandError:
@@ -232,6 +262,7 @@ class RemoteExecutor(socket.socket):
         client_message = client.recv(1024).decode('utf-8').split(' ')
         command = client_message[0]
         args = client_message[1:]
+
         self.command_list[command][0](*args) if command in self.command_list else "This command does not exist."
         
     def start(self) -> None:
