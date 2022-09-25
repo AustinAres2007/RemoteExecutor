@@ -1,5 +1,4 @@
-from multiprocessing.sharedctypes import Value
-import socket, sys, pickle, os, shutil, subprocess, time, git, config
+import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
 from classes.message import *
 from git import Repo
 from threading import Thread
@@ -10,8 +9,8 @@ DEP_LOCATION = "src/dependencies" # Not Johnny Depp
 SITE_PACKAGES = get_paths()["purelib"]
 CURRENT_DIRECTORY = os.getcwd()
 
-config_object = config.Config("src/host-config.cfg")
-
+config_object = config.Config("src/host-sources/host-config.cfg")
+os.system("clear")
 # Don't use this code if you do not like having risks. This script uses Pickle to send class objects.
 # Use at your own risk. (Similar risks to using eval() or exec())
 
@@ -42,7 +41,7 @@ allowed_commands = [
 __AUTHOR__ = "Navid Rohim"
 
 nl = "\n"
-file = open("src/connection_message.txt")
+file = open("src/host-sources/connection_message.txt")
 conn_message = file.read()
 file.close()
 
@@ -69,6 +68,30 @@ def main():
 
         code_host.start()
 
+default = {"blacklist": []}
+indent_s = 4
+def write_blacklist(ip: str=None, clear=False) -> None:
+    with open("src/host-sources/blacklist.json", "w") as blacklist_file:
+        if clear:
+            blacklist_file.write(json.dumps(default, indent=indent_s))
+        else:
+            try:
+                bl_file = get_blacklist()
+                bl_file["blacklist"].append(ip)
+
+                blacklist_file.write(json.dumps(bl_file, indent=indent_s))
+            except json.decoder.JSONDecodeError:
+                write_blacklist(clear=True)
+
+def get_blacklist() -> dict:
+    try:
+        with open("src/host-sources/blacklist.json", "r") as blacklist_file:
+            return json.loads(blacklist_file.read())
+    except FileNotFoundError:
+        return default
+    except json.decoder.JSONDecodeError:
+        write_blacklist(clear=True)
+        return default
 
 # TODO: Handle client error handling (Here)
 
@@ -93,16 +116,12 @@ class RemoteExecutor(socket.socket):
             "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg")
         }
         self.finished = False
-        self.proc = None
+        self.proc = self.client = None
         super().__init__(*args, **kwargs)
 
     def send_message(self, message: str, with_newline=True, raw=False):
         msg = Message(str(f"{nl if with_newline else ''}{message}"), None, self.host)
         self.client.sendall(pickle.dumps(msg) if not raw else message.encode())
-
-    def wait_for_input(self, keyword: str) -> list[bool, str]:
-        input = self.client.recv(1024).decode()
-        return [True, input] if str(input) == str(keyword) else [False, input]
 
     # Server Commands
 
@@ -200,8 +219,8 @@ class RemoteExecutor(socket.socket):
                 m = "Enter a valid full path to a python executable."
             else:
                 self.proc = subprocess.Popen(sargs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=f"src/scripts/{REPO_NAME}")
-                
                 while self.proc.poll() is None:
+
                     for line in self.proc.stdout:
                         time.sleep(0.025)
                         self.send_message(line.decode(), False)
@@ -209,6 +228,7 @@ class RemoteExecutor(socket.socket):
                     for error in self.proc.stderr:
                         time.sleep(0.025)
                         self.send_message(error.decode(), False)
+
                 else:
                     m = "Finished Executing."
 
@@ -253,7 +273,7 @@ class RemoteExecutor(socket.socket):
                 self.send_message(m)
 
     def _disconnect_client_gracefully(self, *args):
-        print(f"{self.client.getpeername()} has disconnected.")
+        print(f"{self.client.getpeername()[0]} has disconnected.")
 
         self.client.close()
         self.client = None
@@ -306,21 +326,33 @@ class RemoteExecutor(socket.socket):
         def next_client():
             self.client.close()
             self.client = None
-            
+        
+        def wait_for_input(keyword: str) -> list[bool, str]:
+            input = self.client.recv(1024).decode()
+            return [True, input] if str(input) == str(keyword) else [False, input]
+
         while True:
             try:
                 self.client, addr = super().accept()
                 print(f"Connection from {addr[0]}")
 
-                client_version = self.wait_for_input(config_object['VERSION'])
+                blacklist = get_blacklist()["blacklist"]
+                if addr[0] in blacklist:
+                    self.send_message("You are blacklisted. Disconnecting.", raw=True)
+                    time.sleep(0.2)
+                    self._disconnect_client_gracefully()
+
+                    continue
+
+                client_version = wait_for_input(config_object['VERSION'])
 
                 if not client_version[0]:
                     self.send_message("Incorrect client version.", raw=True)
                     next_client(); continue
                 self.send_message("True", raw=True)
 
-                client_password = self.wait_for_input(config_object['PASSWORD'])
-                if not client_password[0]:
+                client_password = wait_for_input(config_object['PASSWORD'])
+                if config_object["PASSWORD"] and not client_password[0]:
                     self.send_message("Incorrect Password.", raw=True)
                     next_client(); continue
                 self.send_message("True", raw=True)
@@ -336,6 +368,10 @@ class RemoteExecutor(socket.socket):
                 print(f"{addr[0]} Disconnected Forcefully.")
                 self.client = None
             except AttributeError:
+                sys.exit(0)
+            except KeyboardInterrupt:
+                if self.client:
+                    self._disconnect_client_gracefully()
                 sys.exit(0)
 
 if __name__ == "__main__":

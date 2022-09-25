@@ -6,7 +6,6 @@
 /src/dependencies/*
 /src/scripts/*
 __pycache__
-*.cfg
+pyvenv.cfg
 *.DS_Store
-demo_file.py
 *.icloud

@@ -9,36 +9,51 @@ BUFFER = 4096
 __VERSION__ = 1.2
 COMMAND_INPUT_NOTIF = "\n> "
 
+os_errors = {
+    9: "Host closed."
+}
 def error(string):
     print(string)
     return sys.exit(1)
 
 class RemoteExecutorClient:
 
-    def exit_prog(self):        
-        self.host.sendall("!".encode())
-        self.host.close()
+    def exit_prog(self):    
+        try:    
+            self.host.send("!".encode())
+            self.host.close()
+        except:
+            pass
 
     def send(self, message: str):
-        self.host.sendall(str(message).encode())
+        try:
+            self.host.sendall(str(message if message else ".").encode())
+        except OSError as osr:
+            return error(os_errors[osr.errno])
 
     def connection_protocol(self):
+        try:
+            self.send(__VERSION__)
+            version_conf = self.host.recv(BUFFER).decode()
 
-        self.send(__VERSION__)
-        version_conf = self.host.recv(BUFFER).decode()
+            if version_conf != 'True':
+                self.exit_prog()
+                return error(version_conf)
+            elif version_conf not in ["Incorrect client version.", "True"]:
+                print(">>",version_conf)
 
-        if not version_conf == 'True':
+            self.send(input("Host Password (If not needed, press enter): "))
+            password_conf = self.host.recv(BUFFER).decode()
+
+            if password_conf != 'True':
+                self.exit_prog()
+                return error("Incorrect host password.")
+            
+            return True
+        except KeyboardInterrupt:
             self.exit_prog()
-            return error(version_conf)
-
-        self.send(input("Host Password (If not needed, press enter): "))
-        password_conf = self.host.recv(BUFFER).decode()
-
-        if not password_conf == 'True':
-            self.exit_prog()
-            return error("Incorrect host password.")
-        
-        return True
+        except ConnectionResetError:
+            return sys.exit(1)
 
     def listen_for_messages(self):
         buffer_size = 512*512
@@ -53,6 +68,8 @@ class RemoteExecutorClient:
                 stop = True
             except EOFError:
                 return self.exit_prog()
+            except pickle.UnpicklingError:
+                return sys.exit(1)
     
     def listen_for_commands(self):
         try:
@@ -99,7 +116,7 @@ class RemoteExecutorClient:
                                 command[0]()
 
                                 if not command[1]:
-                                    self.host.sendall(command_name.encode())
+                                    self.send(command_name)
                                 else:
                                     stop = True      
                             except KeyboardInterrupt:
