@@ -30,7 +30,13 @@ os_errors = {
 allowed_commands = [
                 "ls",
                 "ifconfig",
-                "pwd"
+                "pwd",
+                "rm",
+                "mkdir",
+                "cat",
+                "echo",
+                "touch",
+                "mv"
 ]
 
 __AUTHOR__ = "Navid Rohim"
@@ -229,16 +235,21 @@ class RemoteExecutor(socket.socket):
 
     def terminal_command(self, *args, quiet=False, absolute=False):
         m = errors[1]
-        print(args)
         try:
             if args[0] in allowed_commands or absolute:
-                m = os.popen(' '.join(args)).read()
+                m = subprocess.Popen(' '.join(args), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
             else:
                 m = "Command does not exist or is not allowed."
         except IndexError:
             m = errors[0]
         finally:
             if not quiet:
+                if isinstance(m, tuple):
+                    if m[0].decode():
+                        m = m[0].decode()
+                    else:
+                        m = m[1].decode()
+
                 self.send_message(m)
 
     def _disconnect_client_gracefully(self, *args):
