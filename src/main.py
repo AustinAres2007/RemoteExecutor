@@ -41,9 +41,6 @@ allowed_commands = [
 __AUTHOR__ = "Navid Rohim"
 
 nl = "\n"
-file = open("src/host-sources/connection_message.txt")
-conn_message = file.read()
-file.close()
 
 """Removes a path and it's sub-directories, can take multiple paths. (Uses shutil.rmtree and it's arguments)"""
 def remove_many(paths: list, *args, **kwargs):

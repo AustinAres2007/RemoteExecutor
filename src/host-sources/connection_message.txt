@@ -1,6 +1,0 @@
-You are using this tool with the knowledge that this tool could be unsafe for public use. 
-DO NOT let a person you do not trust use this tool, 
-as they can access the host computer with terminal or shell commands.
-For help, type the command "help"
-
-RemoteExecutor - Navid Rohim 2022 - Version 1.0
