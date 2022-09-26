@@ -1,4 +1,5 @@
 import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
+import threading
 from classes.message import *
 from git import Repo
 from threading import Thread
@@ -59,7 +60,7 @@ def main():
      
     with RemoteExecutor(socket.AF_INET, socket.SOCK_STREAM) as code_host:
         code_host.bind((HOST, PORT))
-        code_host.listen(1)
+        code_host.listen(2)
 
         print('Host listening for incoming connections.')
 
@@ -110,17 +111,26 @@ class RemoteExecutor(socket.socket):
             "help": (lambda *a: self.send_help(*a), "This command.", 'help'),
             "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
             "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos'),
-            "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg")
+            "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg"),
+            "dall": (lambda *a: self.disconnect_all_clients(*a), None, "dall")
         }
         self.finished = False
         self.proc = self.client = None
+        self.client_l = []
+
         super().__init__(*args, **kwargs)
 
-    def send_message(self, message: str, with_newline=True, raw=False):
+    def send_message(self, message: str, with_newline=True, raw=False, explicit_client=None):
+        client = explicit_client if isinstance(explicit_client, socket.socket) else self.client
+
         msg = Message(str(f"{nl if with_newline else ''}{message}"), None, self.host)
-        self.client.sendall(pickle.dumps(msg) if not raw else message.encode())
+        client.sendall(pickle.dumps(msg) if not raw else message.encode())
 
     # Server Commands
+
+    def disconnect_all_clients(self, *args):
+        self.disconnect_all_clients()
+        self.send_message("Disconnected all clients.")
 
     def package_manager(self, *args):
         m = None
@@ -270,10 +280,14 @@ class RemoteExecutor(socket.socket):
                 self.send_message(m)
 
     def _disconnect_client_gracefully(self, *args):
-        print(f"{self.client.getpeername()[0]} has disconnected.")
+        print(self.client_l)
+        for clnt in self.client_l:
+            
+            print(f"{clnt.getpeername()[0]} has disconnected.")
 
-        self.client.close()
-        self.client = None
+            clnt.close()
+            self.client = None
+            self.client_l.pop(0)
 
     def download_repo(self, *args):
         m = errors[1]
@@ -331,36 +345,41 @@ class RemoteExecutor(socket.socket):
         while True:
             try:
                 self.client, addr = super().accept()
-                print(f"Connection from {addr[0]}")
+                def handle_client(client, addr):
+                    
+                    self.client_l.append(client)
+                    print(f"Connection from {addr[0]}")
 
-                blacklist = get_blacklist()["blacklist"]
-                if addr[0] in blacklist:
-                    self.send_message("You are blacklisted. Disconnecting.", raw=True)
-                    time.sleep(0.2)
-                    self._disconnect_client_gracefully()
+                    blacklist = get_blacklist()["blacklist"]
+                    if addr[0] in blacklist:
+                        self.send_message("You are blacklisted. Disconnecting.", raw=True)
+                        time.sleep(0.2)
+                        self._disconnect_client_gracefully()
 
-                    continue
+                        return
 
-                client_version = wait_for_input(config_object['VERSION'])
+                    client_version = wait_for_input(config_object['VERSION'])
 
-                if not client_version[0]:
-                    self.send_message("Incorrect client version.", raw=True)
-                    next_client(); continue
-                self.send_message("True", raw=True)
+                    if not client_version[0]:
+                        self.send_message("Incorrect client version.", raw=True)
+                        next_client(); return
+                    self.send_message("True", raw=True, explicit_client=client)
 
-                client_password = wait_for_input(config_object['PASSWORD'])
-                if config_object["PASSWORD"] and not client_password[0]:
-                    self.send_message("Incorrect Password.", raw=True)
-                    next_client(); continue
-                self.send_message("True", raw=True)
+                    client_password = wait_for_input(config_object['PASSWORD'])
+                    if config_object["PASSWORD"] and not client_password[0]:
+                        self.send_message("Incorrect Password.", raw=True)
+                        next_client(); return
+                    self.send_message("True", raw=True)
 
-                self.client_info = {'ver': client_version[1], 'password': client_password[1]}
-                time.sleep(0.01)
+                    self.client_info = {'ver': client_version[1], 'password': client_password[1]}
+                    time.sleep(0.01)
 
-                self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}")
-                while self.client:
-                    self.process_client(client=self.client)
-                              
+                    self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}")
+                    while self.client:
+                        self.process_client(client=self.client)
+
+                Thread(target=handle_client, args=(self.client, addr,)).start()
+                                
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 print(f"{addr[0]} Disconnected Forcefully.")
                 self.client = None

@@ -95,7 +95,8 @@ class RemoteExecutorClient:
                             "help": (lambda: None, False),
                             "terminate": (lambda: None, False),
                             "repos": (lambda: None, False),
-                            "pkg": (lambda: None, False)
+                            "pkg": (lambda: None, False),
+                            "dall": (lambda: None, False)
                     }
                     
                 except (ConnectionRefusedError, ConnectionError):
