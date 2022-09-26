@@ -129,7 +129,7 @@ class RemoteExecutor(socket.socket):
     # Server Commands
 
     def disconnect_all_clients(self, *args):
-        self.disconnect_all_clients()
+        self._disconnect_client_gracefully()
         self.send_message("Disconnected all clients.")
 
     def package_manager(self, *args):
@@ -280,7 +280,6 @@ class RemoteExecutor(socket.socket):
                 self.send_message(m)
 
     def _disconnect_client_gracefully(self, *args):
-        print(self.client_l)
         for clnt in self.client_l:
             
             print(f"{clnt.getpeername()[0]} has disconnected.")
