@@ -40,7 +40,7 @@ class RemoteExecutorClient:
                 self.exit_prog()
                 return error(version_conf)
             elif version_conf not in ["Incorrect client version.", "True"]:
-                print(">>",version_conf)
+                print(version_conf)
 
             self.send(input("Host Password (If not needed, press enter): "))
             password_conf = self.host.recv(BUFFER).decode()
