@@ -60,7 +60,7 @@ def main():
      
     with RemoteExecutor(socket.AF_INET, socket.SOCK_STREAM) as code_host:
         code_host.bind((HOST, PORT))
-        code_host.listen(2)
+        code_host.listen(1)
 
         print('Host listening for incoming connections.')
 
@@ -348,7 +348,7 @@ class RemoteExecutor(socket.socket):
                 def handle_client(client, addr):
                     
                     self.client_l.append(client)
-                    print(f"Connection from {addr[0]}")
+                    print(f"Connection from {addr[0]}:{addr[1]}")
 
                     blacklist = get_blacklist()["blacklist"]
                     if addr[0] in blacklist:
@@ -378,7 +378,7 @@ class RemoteExecutor(socket.socket):
                     while self.client:
                         self.process_client(client=self.client)
 
-                Thread(target=handle_client, args=(self.client, addr,)).start()
+                handle_client(self.client, addr)
                                 
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 print(f"{addr[0]} Disconnected Forcefully.")
