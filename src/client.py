@@ -1,4 +1,5 @@
-import socket, sys, pickle, json
+import socket, sys, pickle
+from typing import Type
 from classes.message import Message, File
 from threading import Thread
 from os import system
@@ -8,15 +9,18 @@ system('clear')
 BUFFER = 4096
 __VERSION__ = 1.2
 COMMAND_INPUT_NOTIF = "\n> "
-
 os_errors = {
     9: "Host closed."
 }
+
 def error(string):
     print(string)
     return sys.exit(1)
 
 class RemoteExecutorClient:
+
+    def __init__(self, debug: bool=False):
+        self.debug = debug
 
     def exit_prog(self):    
         try:    
@@ -34,16 +38,16 @@ class RemoteExecutorClient:
     def connection_protocol(self):
         try:
             self.send(__VERSION__)
-            version_conf = self.host.recv(BUFFER).decode()
+            version_conf = self.recv_single()
 
             if version_conf != 'True':
                 self.exit_prog()
                 return error(version_conf)
             elif version_conf not in ["Incorrect client version.", "True"]:
-                print(">>",version_conf)
+                print(version_conf)
 
             self.send(input("Host Password (If not needed, press enter): "))
-            password_conf = self.host.recv(BUFFER).decode()
+            password_conf = self.recv_single()
 
             if password_conf != 'True':
                 self.exit_prog()
@@ -55,6 +59,13 @@ class RemoteExecutorClient:
         except ConnectionResetError:
             return sys.exit(1)
 
+    def recv_single(self):
+        while True:
+            response = self.host.recv(BUFFER).decode()
+            if self.debug:
+                print("RCV",response)
+            if response != "heartbeat_act":
+                return response
     def listen_for_messages(self):
         buffer_size = 512*512
         stop = False
@@ -62,8 +73,13 @@ class RemoteExecutorClient:
         while not stop:
             try:
                 reply_data = self.host.recv(buffer_size)
-                reply: Message = pickle.loads(reply_data)
-                print(reply.message, end=COMMAND_INPUT_NOTIF)
+                if self.debug:
+                    print("LSM",reply_data[:2], "TYPE", type(reply_data[:2]))
+
+                if bytes(reply_data[:2]) == b'\x80\x04':
+                    reply: Message = pickle.loads(reply_data)
+                    print(reply.message, end=COMMAND_INPUT_NOTIF)
+                    
             except OSError:
                 stop = True
             except EOFError:
@@ -132,4 +148,7 @@ class RemoteExecutorClient:
                         return
 
 if __name__ == "__main__":
-    RemoteExecutorClient().listen_for_commands()
+    try:
+        RemoteExecutorClient(bool(int(sys.argv[3]))).listen_for_commands()
+    except (IndexError, ValueError):
+        print("Missing Command line arguments. (<IP> <PORT> <DEBUG || 1 / 0>)")

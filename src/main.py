@@ -1,4 +1,6 @@
+from http import client
 import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
+from tkinter.tix import Tree
 import threading
 from classes.message import *
 from git import Repo
@@ -344,6 +346,14 @@ class RemoteExecutor(socket.socket):
         while True:
             try:
                 self.client, addr = super().accept()
+                def heartbeat():
+                    try:
+                        while True:
+                            time.sleep(5)
+                            self.send_message("heartbeat_ack", raw=True)
+                    except AttributeError:
+                        return self._disconnect_client_gracefully()
+
                 def handle_client(client, addr):
                     
                     self.client_l.append(client)
@@ -377,6 +387,7 @@ class RemoteExecutor(socket.socket):
                     while self.client:
                         self.process_client(client=self.client)
 
+                Thread(target=heartbeat).start()
                 handle_client(self.client, addr)
                                 
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
