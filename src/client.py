@@ -59,9 +59,9 @@ class RemoteExecutorClient:
             return sys.exit(1)
 
     def heartbeat_rythm(self):
-        while True:
+        for x in range(4):
             time.sleep(4.4)
-            self.send("", 1)
+            self.send("?", 1)
 
     def listen_for_messages(self):
         buffer_size = 512*512
