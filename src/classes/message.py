@@ -1,8 +1,11 @@
-import io
-from typing import Union
+
+from typing import Union as _Union
 from inspect import signature
 
-def make__repr__(cls, ins) -> str:
+MESSAGE = 0
+HEATBEAT = 1
+
+def __make__repr__(cls, ins) -> str:
     cls_args = list(signature(cls).parameters)
     __repr__string = [f"{ins.__class__.__name__}("]
     [__repr__string.append(f"{arg}={getattr(ins, arg)}, ") for arg in cls_args if arg != "self" and hasattr(ins, arg)]
@@ -15,35 +18,16 @@ def make__repr__(cls, ins) -> str:
 class IPAddress(object):
     pass
 
-class File(object):
-    """Represents a File to be send over a network."""
-
-    def __repr__(self) -> str:
-        return make__repr__(File, self)
-        
-    def __init__(self, file, mode) -> None:
-        self.file = open(file, mode)
-
-        super().__init__()
-
-    def data(self) -> Union[bytes, str]:
-        """Returns the file object data."""
-        return self.file.read()
-
 class Message(object):
     """Represents a Message to be send over a network."""
 
     def __repr__(self) -> str:
-        return make__repr__(Message, self)
+        return __make__repr__(Message, self)
 
-    def __init__(self, message: Union[str, int, None]=None, file: File=None, sender: IPAddress=None):
+    def __init__(self, message: _Union[str, int, None]=None, type: int=0, sender: IPAddress=None):
         self.message = message
-        self.file = file
+        self.type = type
         self.sender = sender
 
         super().__init__()
 
-if __name__ == '__main__':
-    file_obj = Message("Hello World.", File("demo_file.py", 'r'), None)
-
-    print(file_obj)

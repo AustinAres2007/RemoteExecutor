@@ -1,6 +1,5 @@
-import socket, sys, pickle
-from typing import Type
-from classes.message import Message, File
+import socket, sys, pickle, time
+from classes.message import Message
 from threading import Thread
 from os import system
 
@@ -10,7 +9,7 @@ BUFFER = 4096
 __VERSION__ = 1.2
 COMMAND_INPUT_NOTIF = "\n> "
 os_errors = {
-    9: "Host closed."
+    9: "Closed."
 }
 
 def error(string):
@@ -24,21 +23,21 @@ class RemoteExecutorClient:
 
     def exit_prog(self):    
         try:    
-            self.host.send("!".encode())
+            self.send("!")
             self.host.close()
         except:
             pass
 
-    def send(self, message: str):
+    def send(self, message: str, type: int=0, raw=False):
         try:
-            self.host.sendall(str(message if message else ".").encode())
+            self.host.sendall(pickle.dumps(Message(str(message if message else "."), type, None)) if not raw else str(message if message else ".").encode())
         except OSError as osr:
             return error(os_errors[osr.errno])
 
     def connection_protocol(self):
         try:
-            self.send(__VERSION__)
-            version_conf = self.recv_single()
+            self.send(__VERSION__, raw=True)
+            version_conf = self.host.recv(BUFFER).decode()
 
             if version_conf != 'True':
                 self.exit_prog()
@@ -46,8 +45,8 @@ class RemoteExecutorClient:
             elif version_conf not in ["Incorrect client version.", "True"]:
                 print(version_conf)
 
-            self.send(input("Host Password (If not needed, press enter): "))
-            password_conf = self.recv_single()
+            self.send(input("Host Password (If not needed, press enter): "), raw=True)
+            password_conf = self.host.recv(BUFFER).decode()
 
             if password_conf != 'True':
                 self.exit_prog()
@@ -59,13 +58,11 @@ class RemoteExecutorClient:
         except ConnectionResetError:
             return sys.exit(1)
 
-    def recv_single(self):
+    def heartbeat_rythm(self):
         while True:
-            response = self.host.recv(BUFFER).decode()
-            if self.debug:
-                print("RCV",response)
-            if response != "heartbeat_act":
-                return response
+            time.sleep(4.4)
+            self.send("", 1)
+
     def listen_for_messages(self):
         buffer_size = 512*512
         stop = False
@@ -125,6 +122,8 @@ class RemoteExecutorClient:
                     if con:
                         message_thread = Thread(target=self.listen_for_messages)
                         message_thread.start()
+                        pulse_thread = Thread(target=self.heartbeat_rythm)
+                        pulse_thread.start()
 
                         while not stop:
                             try:
