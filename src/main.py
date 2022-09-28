@@ -278,9 +278,12 @@ class RemoteExecutor(socket.socket):
 
                 self.send_message(m)
 
-    def _disconnect_client_gracefully(self, *args):
-
-        print(f"{self.client.getpeername()[0]} has disconnected.")
+    def _disconnect_client_gracefully(self, *args, with_msg=True):
+        
+        if with_msg:
+            print(f"{self.client.getpeername()[0]} has disconnected.")
+        else:
+            print("Client disconnected unexpectedly.")
         self.client.close()
         self.client = None
 
@@ -322,16 +325,18 @@ class RemoteExecutor(socket.socket):
         return super().bind(__address)
 
     def process_client(self, client: socket.socket) -> str:
-        client_message: Message = pickle.loads(client.recv(8192))
-        print(client_message)
-        if client_message.type == message.MESSAGE:
-            client_message: str = client_message.message.split(' ')
-            command = client_message[0]
-            args = client_message[1:]
+        try:
+            client_message: Message = pickle.loads(client.recv(8192))
+            if client_message.type == message.MESSAGE:
+                client_message: str = client_message.message.split(' ')
+                command = client_message[0]
+                args = client_message[1:]
 
-            self.command_list[command][0](*args) if command in self.command_list else "This command does not exist."
-        elif client_message.type == message.HEATBEAT:
-            self.bump = True
+                self.command_list[command][0](*args) if command in self.command_list else "This command does not exist."
+            elif client_message.type == message.HEATBEAT:
+                self.bump = True
+        except OSError:
+            self._disconnect_client_gracefully(with_msg=False)
 
     def start(self) -> None:
         def next_client():
@@ -352,7 +357,7 @@ class RemoteExecutor(socket.socket):
                         if self.bump == True:
                             self.bump = False
                             continue
-                        self._disconnect_client_gracefully()
+                        self._disconnect_client_gracefully(with_msg=False)
                             
 
                 def handle_client():
