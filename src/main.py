@@ -5,6 +5,7 @@ from classes import message
 from git import Repo
 from threading import Thread
 from sysconfig import get_paths
+from dateutil.relativedelta import relativedelta as rd
 
 REPO_LOCATION = "src/scripts"
 DEP_LOCATION = "src/dependencies" # Not Johnny Depp
@@ -113,23 +114,25 @@ class RemoteExecutor(socket.socket):
             "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
             "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos'),
             "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg"),
-            "dall": (lambda *a: self.disconnect_all_clients(*a), None, "dall")
+            "uptime": (lambda *a: self.show_uptime(*a), "Shows how long the client has been connected to host. (Updated every five seconds)", "uptime")
         }
         self.finished = False
         self.proc = self.client = None
         self.bump = True
+        self.pulses = 0
+        self.client_pulses = 0
 
         super().__init__(*args, **kwargs)
 
-    def send_message(self, message: str, with_newline=True, raw=False, timeout=60):
+    def send_message(self, message: str, with_newline=True, raw=False):
     
         msg = Message(str(f"{nl if with_newline else ''}{message}"), 0, self.host)
         self.client.sendall(pickle.dumps(msg) if not raw else message.encode())
-    # Server Commands
 
-    def disconnect_all_clients(self, *args):
-        self._disconnect_client_gracefully()
-        self.send_message("Disconnected all clients.")
+    # rExe Commands
+
+    def show_uptime(self, *args):
+        self.send_message("Server Time: {0.days} Days, {0.hours} Hours, {0.minutes} Minutes, {0.seconds} Seconds. ({1})\nClient Time: {2.days} Days, {2.hours} Hours, {2.minutes} Minutes, {2.seconds} Seconds. ({3})".format(rd(seconds=5*self.pulses), 5*self.pulses, rd(seconds=5*self.client_pulses), 5*self.client_pulses))
 
     def package_manager(self, *args):
         m = None
@@ -279,13 +282,15 @@ class RemoteExecutor(socket.socket):
                 self.send_message(m)
 
     def _disconnect_client_gracefully(self, *args, with_msg=True):
-        
-        if with_msg:
-            print(f"{self.client.getpeername()[0]} has disconnected.")
-        else:
-            print("Client disconnected unexpectedly.")
-        self.client.close()
-        self.client = None
+        try:
+            if with_msg:
+                print(f"{self.client.getpeername()[0]} has disconnected.")
+            else:
+                print("Client disconnected unexpectedly.")
+            self.client.close()
+            self.client = None
+        except AttributeError:
+            return 
 
     def download_repo(self, *args):
         m = errors[1]
@@ -345,17 +350,21 @@ class RemoteExecutor(socket.socket):
         
         def wait_for_input(keyword: str) -> list[bool, str]:
             input = self.client.recv(1024).decode()
-            print(input)
             return [True, input] if str(input) == str(keyword) else [False, input]
 
         while True:
             try:
                 self.client, addr = super().accept()
+                self.client_pulses = 0
+
                 def heartbeat():
                     while self.client:
                         time.sleep(5)
                         if self.bump == True:
                             self.bump = False
+                            self.pulses += 1
+                            self.client_pulses += 1
+
                             continue
                         self._disconnect_client_gracefully(with_msg=False)
                             

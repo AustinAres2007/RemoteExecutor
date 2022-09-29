@@ -10,6 +10,7 @@ __VERSION__ = 1.2
 COMMAND_INPUT_NOTIF = "\n> "
 os_errors = {
     9: "Closed."
+    #32: "Disconnected from host, did you lose connection?"
 }
 
 def error(string):
@@ -59,8 +60,8 @@ class RemoteExecutorClient:
             return sys.exit(1)
 
     def heartbeat_rythm(self):
-        for x in range(4):
-            time.sleep(4.4)
+        while True:
+            time.sleep(4)
             self.send("?", 1)
 
     def listen_for_messages(self):
@@ -109,7 +110,7 @@ class RemoteExecutorClient:
                             "terminate": (lambda: None, False),
                             "repos": (lambda: None, False),
                             "pkg": (lambda: None, False),
-                            "dall": (lambda: None, False)
+                            "uptime": (lambda: None, False)
                     }
                     
                 except (ConnectionRefusedError, ConnectionError):
