@@ -9,8 +9,8 @@ BUFFER = 4096
 __VERSION__ = 1.2
 COMMAND_INPUT_NOTIF = "\n> "
 os_errors = {
-    9: "Closed."
-    #32: "Disconnected from host, did you lose connection?"
+    9: "Closed.",
+    32: "Disconnected from host, the host either crashed or you lost connection. Try again."
 }
 
 def error(string):
@@ -76,7 +76,7 @@ class RemoteExecutorClient:
                 reply = pickle.loads(self.host.recv(buffer_size))
                 print(reply.message, end=COMMAND_INPUT_NOTIF)
                     
-            except OSError:
+            except OSError as err:
                 self.stop = True
             except EOFError:
                 return self.exit_prog()
@@ -135,6 +135,7 @@ class RemoteExecutorClient:
                                 if not command[1]:
                                     self.send(command_name)
                                 else:
+                                    print("Ending")
                                     self.stop = True      
                             except KeyboardInterrupt:
                                 self.exit_prog()

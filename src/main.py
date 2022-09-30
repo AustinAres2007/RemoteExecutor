@@ -1,4 +1,5 @@
 import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
+from tkinter import E
 from classes.message import *
 
 from git import Repo
@@ -12,12 +13,18 @@ CURRENT_DIRECTORY = os.getcwd()
 
 config_object = config.Config("src/host-sources/host-config.cfg")
 os.system("clear")
+
 # Don't use this code if you do not like having risks. This script uses Pickle to send class objects.
 # Use at your own risk. (Similar risks to using eval() or exec())
 
 # I do not bother to use asyncio. This is meant for one connection at a time.
 
 # Commonly used errors
+
+"""
+Major Issue:
+STDOUT data is only sent once the script has executed, this is a problem.
+"""
 
 try:
     HOST, PORT = sys.argv[1:]
@@ -28,10 +35,11 @@ except ValueError:
 errors = {
     0: "Missing Arguments.",
     1: "Unknown Error.",
-    2: "No repo with that name."
+    2: "No repo with that name, or the repo has no dependencies folder."
 }
 os_errors = {
-    17: "Package already exists."
+    17: "Package already exists.",
+    48: "Address already binded too, please kill any remaining connections or use a different port."
 }
 # Commands allowed in "sys" command
 allowed_commands = [
@@ -65,8 +73,8 @@ def main():
             print(f'~ Details ~\n\nHost IP: {HOST}\nHost Port: {PORT}\nHost listening for incoming connections.')
 
             code_host.start()
-    except ThreadError:
-        return print("Cannot bind to port, any lingering connections?")
+    except OSError as ose:
+        return print(os_errors[int(ose.errno)])
         
 default = {"blacklist": []}
 indent_s = 4
@@ -137,22 +145,25 @@ class RemoteExecutor(socket.socket):
             # TODO: Fix naming scheme for package folders (A-B + _)
 
             try:
-                os.mkdir(f"src/dependencies/{repo}/{package}")
-                self.terminal_command(*(f"source bin/activate && pip install -t src/dependencies/{repo}/{package} {package}",), quiet=True, absolute=True)
-                return f"Installed {package}"
+                os.mkdir(f"{DEP_LOCATION}/{repo}/{package}")
+                self.terminal_command(*(f"source bin/activate && pip install -t src/dependencies/{repo}/{package} {package}",), absolute=True)
+                return f"Installed {package} at {DEP_LOCATION}/{repo}/{package}"
+            except FileNotFoundError:
+                return f'Repo "{repo}" has no dependency folder, please make one in "{DEP_LOCATION}" with the name of "{repo}"'
             except OSError as err:
-                return os_errors[int(err.errno)]
+                return os_errors[int(err.errno)] if int(err.errno) in os_errors else err
 
         def _uninstall_package(package: str, repo: str) -> str:
+            os.remove(f"{SITE_PACKAGES}/script_dependencies.pth")
             shutil.rmtree(f"src/dependencies/{repo}/{package}")
             return f"Removed {package}."
 
         def _show_ops():
             return "opts - shows all pkg options\ninstall - Installs a package from PyPi\nuninstall - Removes a package\nshow - Shows all packages installed"
 
-        def _show_repos(repo, _) -> str:
+        def _show_repos(repo, _) -> str:    
             try:
-                return '\n'.join([f"{DEP_LOCATION}/{repo}/{r} (When used in a command: {r})" for r in os.listdir(f"{DEP_LOCATION}/{repo}") if os.path.isdir(f"{DEP_LOCATION}/{repo}/{r}")])
+                return '\n'.join([f'{DEP_LOCATION}/{repo}/{r} (When used in a command: "{r}" Uninstall Command: "pkg uninstall {r} demo")' for r in os.listdir(f"{DEP_LOCATION}/{repo}") if os.path.isdir(f"{DEP_LOCATION}/{repo}/{r}")])
             except FileNotFoundError:
                 return errors[2]
         commands = {
@@ -163,7 +174,7 @@ class RemoteExecutor(socket.socket):
         commands_noargs = {
             "opts": _show_ops
         }   
-        help = "pkg [install || uninstall || opts] <pip-package || None> <repo || None>"
+        help = "pkg [install || uninstall || opts] <pip-package || None> <repo || .>\n\n. = None"
         try:
             sub_command = args[0].lower()    
             if sub_command in list(commands_noargs):
@@ -360,7 +371,7 @@ class RemoteExecutor(socket.socket):
                     print("Ending heartbeat with client.")
                     self.client = None
                         
-                print(f"Connection from {addr[0]}:{addr[1]}")
+                print(f"\n\n{'~'*15}\n\nConnection from {addr[0]}:{addr[1]}")
 
                 blacklist = get_blacklist()["blacklist"]
                 if addr[0] in blacklist:
