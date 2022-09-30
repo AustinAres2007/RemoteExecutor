@@ -1,9 +1,10 @@
+from concurrent.futures import process
 import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
 from tkinter import E
 from classes.message import *
 
 from git import Repo
-from threading import Thread, ThreadError
+from threading import Thread
 from sysconfig import get_paths
 
 REPO_LOCATION = "src/scripts"
@@ -24,7 +25,16 @@ os.system("clear")
 """
 Major Issue:
 STDOUT data is only sent once the script has executed, this is a problem.
+
+FIXED: use "-u" flag when executing the python script within Popen()
+TODO: 
+    1. Add Ip configuration in host-config.cfg file
+    2. Fix file naming when cloning a repo (Only A-Z and Underscores "_")
+    3. Git intergration
 """
+
+HEATBEAT_ACK = "heartbeat_ack"
+SHUTDOWN_ACK = "shutdown_ack"
 
 try:
     HOST, PORT = sys.argv[1:]
@@ -39,7 +49,10 @@ errors = {
 }
 os_errors = {
     17: "Package already exists.",
-    48: "Address already binded too, please kill any remaining connections or use a different port."
+    48: "Address already binded too, please kill any remaining connections or use a different port.",
+    49: "Cannot assign to supplied address. Use the local address of your device.",
+    51: "Network is unreachable, got the right local IP?",
+    60: "Could not connect."
 }
 # Commands allowed in "sys" command
 allowed_commands = [
@@ -102,6 +115,9 @@ def get_blacklist() -> dict:
         write_blacklist(clear=True)
         return default
 
+def get_module_file() -> dict:
+    pass
+
 # TODO: Handle client error handling (Here)
 
 class RemoteExecutor(socket.socket):
@@ -118,8 +134,8 @@ class RemoteExecutor(socket.socket):
             "sys": (lambda *a: self.terminal_command(*a), "Execute a terminal / cmd command. (sys <terminal-cmd> <args-for-cmd>)", "sys"),
             "rm": (lambda *a: self.remove_repo(*a), "Removes a repo from scripts folder. (rm <name-you-entered-for-repo>)", 'rm'),
             "run": (lambda *a: self._execute_repo_thread(*a), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
-            "!": (lambda *a: self._disconnect_client_gracefully(*a), None, 'shutdown signal'),
-            "?": (lambda *a: self._update_pulse(*a), None, "heatbeat acknowledgement"),
+            SHUTDOWN_ACK: (lambda *a: self._disconnect_client_gracefully(*a), None, 'shutdown signal'),
+            HEATBEAT_ACK: (lambda *a: self._update_pulse(*a), None, "heatbeat acknowledgement"),
             "help": (lambda *a: self.send_help(*a), "This command.", 'help'),
             "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
             "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos'),
@@ -145,8 +161,9 @@ class RemoteExecutor(socket.socket):
             # TODO: Fix naming scheme for package folders (A-B + _)
 
             try:
-                os.mkdir(f"{DEP_LOCATION}/{repo}/{package}")
+                os.mkdir(f"{DEP_LOCATION}/{repo}/{package.split('')}")
                 self.terminal_command(*(f"source bin/activate && pip install -t src/dependencies/{repo}/{package} {package}",), absolute=True)
+
                 return f"Installed {package} at {DEP_LOCATION}/{repo}/{package}"
             except FileNotFoundError:
                 return f'Repo "{repo}" has no dependency folder, please make one in "{DEP_LOCATION}" with the name of "{repo}"'
@@ -214,7 +231,7 @@ class RemoteExecutor(socket.socket):
     def run_repo(self, *args):
         # TODO: Test if file arguments work
 
-        command = "python3"
+        command = "python3 -u"
         m = errors[1]
 
         try:
@@ -234,16 +251,17 @@ class RemoteExecutor(socket.socket):
             if sargs.strip() == command:
                 m = "Enter a valid full path to a python executable."
             else:
+                self.send_message("\n\n~~~ BEGIN SCRIPT~~~\n\n")
                 self.proc = subprocess.Popen(sargs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=f"src/scripts/{REPO_NAME}")
                 while self.proc.poll() is None:
 
                     for line in self.proc.stdout:
                         time.sleep(0.025)
-                        self.send_message(line.decode(), False)
-
+                        self.send_message(line.decode().strip(), with_newline=False)
+                
                     for error in self.proc.stderr:
                         time.sleep(0.025)
-                        self.send_message(error.decode(), False)
+                        self.send_message(error.decode(), with_newline=False)
 
                 else:
                     m = "Finished Executing."
@@ -260,7 +278,7 @@ class RemoteExecutor(socket.socket):
         try:
             repo = args[0]
             m = f'Removed the repo "{repo}"'
-            remove_many([f"{REPO_LOCATION}/{repo}", f"{DEP_LOCATION}/{repo}"], ignore_errors=True)
+            remove_many([f"{REPO_LOCATION}/{repo}", f"{DEP_LOCATION}/{repo}"])
 
         except IndexError:
             m = errors[0]
@@ -304,7 +322,7 @@ class RemoteExecutor(socket.socket):
             repo = args[0]
             saved_as = args[1]
         
-            if os.path.exists(f"src/scripts/{saved_as}"):
+            if os.path.exists(f"{REPO_LOCATION}/{saved_as}") and os.path.exists(f"{DEP_LOCATION}/{saved_as}"):
                 m = "Repo with that folder name already exists."
             else:
                 try:
@@ -312,9 +330,11 @@ class RemoteExecutor(socket.socket):
                     os.mkdir(f"{REPO_LOCATION}/{saved_as}")
                     os.mkdir(f"{DEP_LOCATION}/{saved_as}")
 
-                    Repo.clone_from(repo, f'src/scripts/{saved_as}')
-                    m = f'Finished downloading "{repo}".'
+                    with open(f"{DEP_LOCATION}/{saved_as}/module_index.json", 'w+') as module_map:
+                        module_map.write(json.dumps({"names": {}}, indent=indent_s))
 
+                    Repo.clone_from(repo, f'{REPO_LOCATION}/{saved_as}')
+                    m = f'Finished downloading "{repo}".'
                 except Exception as e:
                     m = f"Could not clone repo, error: {e}"
                     remove_many([f"{REPO_LOCATION}/{saved_as}", f"{DEP_LOCATION}/{saved_as}"])

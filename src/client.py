@@ -1,13 +1,15 @@
 import socket, sys, pickle, time
-from classes.message import Message
 from threading import Thread
 from os import system
 
 system('clear')
 
+SHUTDOWN_ACK = "shutdown_ack"
+HEARTBEAT_ACK = "heartbeat_ack"
 BUFFER = 4096
 __VERSION__ = 1.2
 COMMAND_INPUT_NOTIF = "\n> "
+
 os_errors = {
     9: "Closed.",
     32: "Disconnected from host, the host either crashed or you lost connection. Try again."
@@ -25,7 +27,7 @@ class RemoteExecutorClient:
 
     def exit_prog(self):    
         try:    
-            self.send("!")
+            self.send(SHUTDOWN_ACK)
             self.host.close()
         except:
             pass
@@ -65,7 +67,7 @@ class RemoteExecutorClient:
             for _ in range(25):
                 time.sleep(1)
 
-            self.send("?")
+            self.send(HEARTBEAT_ACK)
 
     def listen_for_messages(self):
         buffer_size = 512*512
@@ -74,7 +76,7 @@ class RemoteExecutorClient:
         while not self.stop:
             try:
                 reply = pickle.loads(self.host.recv(buffer_size))
-                print(reply.message, end=COMMAND_INPUT_NOTIF)
+                print(reply.message)
                     
             except OSError as err:
                 self.stop = True
