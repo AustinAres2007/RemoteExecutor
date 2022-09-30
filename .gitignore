@@ -1,8 +1,8 @@
-Scripts/
-Lib/
-Include/
-.vscode/
+
 bin/
+lib/
+include/
+.vscode/
 
 __pycache__
 src/host-sources/*
