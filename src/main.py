@@ -1,11 +1,9 @@
 import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
 from classes.message import *
-from classes import message
 
 from git import Repo
-from threading import Thread
+from threading import Thread, ThreadError
 from sysconfig import get_paths
-from dateutil.relativedelta import relativedelta as rd
 
 REPO_LOCATION = "src/scripts"
 DEP_LOCATION = "src/dependencies" # Not Johnny Depp
@@ -20,6 +18,13 @@ os.system("clear")
 # I do not bother to use asyncio. This is meant for one connection at a time.
 
 # Commonly used errors
+
+try:
+    HOST, PORT = sys.argv[1:]
+    PORT = int(PORT)
+except ValueError:
+    print("Port is a String, not Integer."); exit(1)
+    
 errors = {
     0: "Missing Arguments.",
     1: "Unknown Error.",
@@ -38,7 +43,8 @@ allowed_commands = [
                 "cat",
                 "echo",
                 "touch",
-                "mv"
+                "mv",
+                "git"
 ]
 
 __AUTHOR__ = "Navid Rohim"
@@ -51,25 +57,20 @@ def remove_many(paths: list, *args, **kwargs):
         shutil.rmtree(path, *args, **kwargs)
 
 def main():
-
     try:
-        HOST, PORT = sys.argv[1:]
-        PORT = int(PORT)
-    except ValueError:
-        return print("Port is a String, not Integer.")
+        with RemoteExecutor(socket.AF_INET, socket.SOCK_STREAM) as code_host:
+            code_host.bind((HOST, PORT))
+            code_host.listen(1)
 
-    print(f"~ Details ~\n\nHost IP: {HOST}\nHost Port: {PORT}\n")
-     
-    with RemoteExecutor(socket.AF_INET, socket.SOCK_STREAM) as code_host:
-        code_host.bind((HOST, PORT))
-        code_host.listen(1)
+            print(f'~ Details ~\n\nHost IP: {HOST}\nHost Port: {PORT}\nHost listening for incoming connections.')
 
-        print('Host listening for incoming connections.')
-
-        code_host.start()
-
+            code_host.start()
+    except ThreadError:
+        return print("Cannot bind to port, any lingering connections?")
+        
 default = {"blacklist": []}
 indent_s = 4
+
 def write_blacklist(ip: str=None, clear=False) -> None:
     with open("src/host-sources/blacklist.json", "w") as blacklist_file:
         if clear:
@@ -109,18 +110,16 @@ class RemoteExecutor(socket.socket):
             "sys": (lambda *a: self.terminal_command(*a), "Execute a terminal / cmd command. (sys <terminal-cmd> <args-for-cmd>)", "sys"),
             "rm": (lambda *a: self.remove_repo(*a), "Removes a repo from scripts folder. (rm <name-you-entered-for-repo>)", 'rm'),
             "run": (lambda *a: self._execute_repo_thread(*a), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
-            "!": (lambda *a: self._disconnect_client_gracefully(*a), None, 'internal command'),
+            "!": (lambda *a: self._disconnect_client_gracefully(*a), None, 'shutdown signal'),
+            "?": (lambda *a: self._update_pulse(*a), None, "heatbeat acknowledgement"),
             "help": (lambda *a: self.send_help(*a), "This command.", 'help'),
             "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
             "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos'),
-            "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg"),
-            "uptime": (lambda *a: self.show_uptime(*a), "Shows how long the client has been connected to host. (Updated every five seconds)", "uptime")
+            "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg")
         }
         self.finished = False
         self.proc = self.client = None
         self.bump = True
-        self.pulses = 0
-        self.client_pulses = 0
 
         super().__init__(*args, **kwargs)
 
@@ -130,9 +129,6 @@ class RemoteExecutor(socket.socket):
         self.client.sendall(pickle.dumps(msg) if not raw else message.encode())
 
     # rExe Commands
-
-    def show_uptime(self, *args):
-        self.send_message("Server Time: {0.days} Days, {0.hours} Hours, {0.minutes} Minutes, {0.seconds} Seconds. ({1})\nClient Time: {2.days} Days, {2.hours} Hours, {2.minutes} Minutes, {2.seconds} Seconds. ({3})".format(rd(seconds=5*self.pulses), 5*self.pulses, rd(seconds=5*self.client_pulses), 5*self.client_pulses))
 
     def package_manager(self, *args):
         m = None
@@ -281,16 +277,14 @@ class RemoteExecutor(socket.socket):
 
                 self.send_message(m)
 
-    def _disconnect_client_gracefully(self, *args, with_msg=True):
-        try:
-            if with_msg:
-                print(f"{self.client.getpeername()[0]} has disconnected.")
-            else:
-                print("Client disconnected unexpectedly.")
-            self.client.close()
-            self.client = None
-        except AttributeError:
-            return 
+    def _disconnect_client_gracefully(self, *args):
+
+        print(f"Client has disconnected.")
+        self.client.close()
+        self.client = None 
+    
+    def _update_pulse(self, *args):
+        self.bump = True
 
     def download_repo(self, *args):
         m = errors[1]
@@ -329,19 +323,17 @@ class RemoteExecutor(socket.socket):
         self.host = __address
         return super().bind(__address)
 
-    def process_client(self, client: socket.socket) -> str:
+    def process_client(self) -> str:
+        
         try:
-            client_message: Message = pickle.loads(client.recv(8192))
-            if client_message.type == message.MESSAGE:
-                client_message: str = client_message.message.split(' ')
+            if self.client:
+                client_message = self.client.recv(1024).decode().split(" ")
                 command = client_message[0]
                 args = client_message[1:]
 
                 self.command_list[command][0](*args) if command in self.command_list else "This command does not exist."
-            elif client_message.type == message.HEATBEAT:
-                self.bump = True
         except OSError:
-            self._disconnect_client_gracefully(with_msg=False)
+            self.client = None
 
     def start(self) -> None:
         def next_client():
@@ -355,56 +347,52 @@ class RemoteExecutor(socket.socket):
         while True:
             try:
                 self.client, addr = super().accept()
-                self.client_pulses = 0
 
                 def heartbeat():
-                    while self.client:
-                        time.sleep(5)
+                    while self.client != None:
+                        for _ in range(30):
+                            if self.client: time.sleep(1); continue
+                            else: break
+
                         if self.bump == True:
-                            self.bump = False
-                            self.pulses += 1
-                            self.client_pulses += 1
+                            self.bump = False; continue
+                        
+                    print("Ending heartbeat with client.")
+                    self.client = None
+                        
+                print(f"Connection from {addr[0]}:{addr[1]}")
 
-                            continue
-                        self._disconnect_client_gracefully(with_msg=False)
-                            
+                blacklist = get_blacklist()["blacklist"]
+                if addr[0] in blacklist:
+                    self.send_message("You are blacklisted. Disconnecting.", raw=True)
+                    time.sleep(0.2)
+                    self._disconnect_client_gracefully()
 
-                def handle_client():
-                    
-                    print(f"Connection from {addr[0]}:{addr[1]}")
+                    return
 
-                    blacklist = get_blacklist()["blacklist"]
-                    if addr[0] in blacklist:
-                        self.send_message("You are blacklisted. Disconnecting.", raw=True)
-                        time.sleep(0.2)
-                        self._disconnect_client_gracefully()
+                client_version = wait_for_input(config_object['VERSION'])
 
-                        return
+                if not client_version[0]:
+                    self.send_message("Incorrect client version.", raw=True)
+                    next_client(); return
+                self.send_message("True", raw=True)
 
-                    client_version = wait_for_input(config_object['VERSION'])
+                client_password = wait_for_input(config_object['PASSWORD'])
+                if config_object["PASSWORD"] and not client_password[0]:
+                    self.send_message("Incorrect Password.", raw=True)
+                    next_client(); return
+                self.send_message("True", raw=True)
 
-                    if not client_version[0]:
-                        self.send_message("Incorrect client version.", raw=True)
-                        next_client(); return
-                    self.send_message("True", raw=True)
+                self.client_info = {'ver': client_version[1], 'password': client_password[1]}
+                time.sleep(0.01)
 
-                    client_password = wait_for_input(config_object['PASSWORD'])
-                    if config_object["PASSWORD"] and not client_password[0]:
-                        self.send_message("Incorrect Password.", raw=True)
-                        next_client(); return
-                    self.send_message("True", raw=True)
+                # Welcome message
+                self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}")
+                Thread(target=heartbeat).start()
 
-                    self.client_info = {'ver': client_version[1], 'password': client_password[1]}
-                    time.sleep(0.01)
-
-                    self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}")
-                    Thread(target=heartbeat).start()
-
-                    while self.client:
-                        self.process_client(client=self.client)
-
-                handle_client()
-                                
+                while self.client:
+                    self.process_client()
+            
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 print(f"{addr[0]} Disconnected Forcefully.")
                 self.client = None

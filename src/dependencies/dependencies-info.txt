@@ -1,0 +1,2 @@
+This is where modules (dependencies) for repos are stored. Folder names must corrolate with the repo folder name
+for this to work.

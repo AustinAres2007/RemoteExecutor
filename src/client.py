@@ -21,6 +21,7 @@ class RemoteExecutorClient:
 
     def __init__(self, debug: bool=False):
         self.debug = debug
+        self.stop = False
 
     def exit_prog(self):    
         try:    
@@ -29,15 +30,15 @@ class RemoteExecutorClient:
         except:
             pass
 
-    def send(self, message: str, type: int=0, raw=False):
+    def send(self, message: str):
         try:
-            self.host.sendall(pickle.dumps(Message(str(message if message else "."), type, None)) if not raw else str(message if message else ".").encode())
+            self.host.sendall(str(message if message else ".").encode())
         except OSError as osr:
             return error(os_errors[osr.errno])
 
     def connection_protocol(self):
         try:
-            self.send(__VERSION__, raw=True)
+            self.send(__VERSION__)
             version_conf = self.host.recv(BUFFER).decode()
 
             if version_conf != 'True':
@@ -46,7 +47,7 @@ class RemoteExecutorClient:
             elif version_conf not in ["Incorrect client version.", "True"]:
                 print(version_conf)
 
-            self.send(input("Host Password (If not needed, press enter): "), raw=True)
+            self.send(input("Host Password (If not needed, press enter): "))
             password_conf = self.host.recv(BUFFER).decode()
 
             if password_conf != 'True':
@@ -60,26 +61,23 @@ class RemoteExecutorClient:
             return sys.exit(1)
 
     def heartbeat_rythm(self):
-        while True:
-            time.sleep(4)
-            self.send("?", 1)
+        while self.stop:
+            for _ in range(25):
+                time.sleep(1)
+
+            self.send("?")
 
     def listen_for_messages(self):
         buffer_size = 512*512
-        stop = False
+        self.stop = False
 
-        while not stop:
+        while not self.stop:
             try:
-                reply_data = self.host.recv(buffer_size)
-                if self.debug:
-                    print("LSM",reply_data[:2], "TYPE", type(reply_data[:2]))
-
-                if bytes(reply_data[:2]) == b'\x80\x04':
-                    reply: Message = pickle.loads(reply_data)
-                    print(reply.message, end=COMMAND_INPUT_NOTIF)
+                reply = pickle.loads(self.host.recv(buffer_size))
+                print(reply.message, end=COMMAND_INPUT_NOTIF)
                     
             except OSError:
-                stop = True
+                self.stop = True
             except EOFError:
                 return self.exit_prog()
             except pickle.UnpicklingError:
@@ -89,6 +87,9 @@ class RemoteExecutorClient:
         try:
             SERVER_HOST: str = sys.argv[1]
             SERVER_PORT: int = int(sys.argv[2])
+
+            if not (SERVER_PORT > 0 and SERVER_PORT <= 65535):
+                return error("Please chose a port between 1 - 65535")
         except IndexError:
             return error("Not enough parameters in run arguments.")
         except ValueError:
@@ -109,8 +110,7 @@ class RemoteExecutorClient:
                             "help": (lambda: None, False),
                             "terminate": (lambda: None, False),
                             "repos": (lambda: None, False),
-                            "pkg": (lambda: None, False),
-                            "uptime": (lambda: None, False)
+                            "pkg": (lambda: None, False)
                     }
                     
                 except (ConnectionRefusedError, ConnectionError):
@@ -118,7 +118,6 @@ class RemoteExecutorClient:
                 
                 else:
                     con = self.connection_protocol()
-                    stop = False
 
                     if con:
                         message_thread = Thread(target=self.listen_for_messages)
@@ -126,8 +125,9 @@ class RemoteExecutorClient:
                         pulse_thread = Thread(target=self.heartbeat_rythm)
                         pulse_thread.start()
 
-                        while not stop:
+                        while not self.stop:
                             try:
+                                time.sleep(.5)
                                 command_name = input()
                                 command = commands[command_name.split(' ')[0]]
                                 command[0]()
@@ -135,7 +135,7 @@ class RemoteExecutorClient:
                                 if not command[1]:
                                     self.send(command_name)
                                 else:
-                                    stop = True      
+                                    self.stop = True      
                             except KeyboardInterrupt:
                                 self.exit_prog()
                                 return error("Shutting down client.")
