@@ -218,7 +218,7 @@ class RemoteExecutor(socket.socket):
         def _uninstall_package(package: str, repo: str) -> str:
             module_index = get_module_file(repo)
             redirect_name = module_index.get(package, None)
-            
+
             if redirect_name:
                 remove_without_err(f"{SITE_PACKAGES}/script_dependencies.pth")
                 shutil.rmtree(f"{DEP_LOCATION}/{repo}/{redirect_name}")
@@ -343,6 +343,7 @@ class RemoteExecutor(socket.socket):
 
     def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True) -> tuple[str, int]:
         m = errors[1]
+        m_proc = 1
         try:
             if args[0] in allowed_commands or absolute:
                 m_proc = subprocess.Popen(' '.join(args), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

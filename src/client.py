@@ -7,7 +7,7 @@ system('clear')
 SHUTDOWN_ACK = "shutdown_ack"
 HEARTBEAT_ACK = "heartbeat_ack"
 BUFFER = 4096
-__VERSION__ = 1.2
+__VERSION__ = 1.3
 COMMAND_INPUT_NOTIF = "\n> "
 
 os_errors = {
