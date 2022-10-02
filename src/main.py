@@ -1,11 +1,11 @@
-from concurrent.futures import process
-import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
-from tkinter import E
-from classes.message import *
 
+import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
+
+from classes.message import *
 from git import Repo
 from threading import Thread
 from sysconfig import get_paths
+from typing import Union
 
 REPO_LOCATION = "src/scripts"
 DEP_LOCATION = "src/dependencies" # Not Johnny Depp
@@ -45,7 +45,8 @@ except ValueError:
 errors = {
     0: "Missing Arguments.",
     1: "Unknown Error.",
-    2: "No repo with that name, or the repo has no dependencies folder."
+    2: "No repo with that name, or the repo has no dependencies folder.",
+    3: "Corrupted module-index.json file."
 }
 os_errors = {
     17: "Package already exists.",
@@ -115,8 +116,30 @@ def get_blacklist() -> dict:
         write_blacklist(clear=True)
         return default
 
-def get_module_file() -> dict:
-    pass
+def get_module_file(repo) -> Union[dict, str]:
+    try:
+        with open(f"{DEP_LOCATION}/{repo}/module-index.json", 'r') as m_index:
+            module_index = json.loads(m_index.read())
+        return module_index
+    except FileNotFoundError:
+        return "module-index.json file not found."
+    except json.decoder.JSONDecodeError:
+        return errors[3]
+
+def write_module_file(repo, keys: list, value: str) -> Union[dict, str]:
+    current_module_file = get_module_file(repo)
+    if isinstance(current_module_file, dict):
+        new_m_index = current_module_file | {k: value for k in keys}
+
+        with open(f"{DEP_LOCATION}/{repo}/module-index.json", "w") as m_index:
+            m_index.write(json.dumps(new_m_index, indent=indent_s))
+        
+        return new_m_index
+    return current_module_file
+
+def remove_without_err(path: str) -> None:
+    if os.path.exists(path):
+        shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
 
 # TODO: Handle client error handling (Here)
 
@@ -159,21 +182,49 @@ class RemoteExecutor(socket.socket):
         
         def _install_package(package: str, repo: str) -> str:
             # TODO: Fix naming scheme for package folders (A-B + _)
-
+            full_repo_path = f"{DEP_LOCATION}/{repo}"
             try:
-                os.mkdir(f"{DEP_LOCATION}/{repo}/{package.split('')}")
-                self.terminal_command(*(f"source bin/activate && pip install -t src/dependencies/{repo}/{package} {package}",), absolute=True)
+                # wtf is this line, bruh
+                os.mkdir(f"{full_repo_path}/TEMP-PKG")
+                return_proc: str = self.terminal_command(*(f"source bin/activate && pip install {package} -t {full_repo_path}/TEMP-PKG --dry-run --no-deps",), absolute=True, send_to_client=False) \
+                    [0].split('\n')[-2] \
+                        .split(" ")[-1] \
+                            .split("-")
+                
+                for i, sect in enumerate(return_proc):
+                    if not any(ch.isdigit() for ch in sect):
+                        pkg_foldername = '_'.join(return_proc[:i+1])
+                        alt_pkg_name = pkg_foldername.replace("_", "-") # Not used yet
 
-                return f"Installed {package} at {DEP_LOCATION}/{repo}/{package}"
+                if os.path.exists(f"{full_repo_path}/{pkg_foldername}"):
+                    return "Module already exists."
+
+                self.terminal_command(*(f"source bin/activate && pip install {package} -t {full_repo_path}/TEMP-PKG",), absolute=True)
+
+                time.sleep(1)
+
+                os.rename(f"{full_repo_path}/TEMP-PKG", f"{full_repo_path}/{pkg_foldername}")
+                write_module_file(repo, [pkg_foldername, alt_pkg_name], pkg_foldername)
+
+                return f"Installed {package} at {full_repo_path}/{pkg_foldername}"
+
             except FileNotFoundError:
                 return f'Repo "{repo}" has no dependency folder, please make one in "{DEP_LOCATION}" with the name of "{repo}"'
             except OSError as err:
                 return os_errors[int(err.errno)] if int(err.errno) in os_errors else err
+            finally:
+                remove_without_err(f"{full_repo_path}/TEMP-PKG")
 
         def _uninstall_package(package: str, repo: str) -> str:
-            os.remove(f"{SITE_PACKAGES}/script_dependencies.pth")
-            shutil.rmtree(f"src/dependencies/{repo}/{package}")
-            return f"Removed {package}."
+            module_index = get_module_file(repo)
+            redirect_name = module_index.get(package, None)
+            
+            if redirect_name:
+                remove_without_err(f"{SITE_PACKAGES}/script_dependencies.pth")
+                shutil.rmtree(f"{DEP_LOCATION}/{repo}/{redirect_name}")
+
+                return f"Removed {package} from {repo}."
+            return "No package with that name."
 
         def _show_ops():
             return "opts - shows all pkg options\ninstall - Installs a package from PyPi\nuninstall - Removes a package\nshow - Shows all packages installed"
@@ -198,7 +249,10 @@ class RemoteExecutor(socket.socket):
                 m = commands_noargs[sub_command]()
             elif sub_command in list(commands):
                 A0, A1 = args[1:]
-                m = commands[sub_command](A0, A1)
+                if os.path.exists(f"{DEP_LOCATION}/{A1}"):
+                    m = commands[sub_command](A0, A1)
+                else:
+                    m = errors[2]
             else:
                 m = f"Unknown option. {help}"
 
@@ -231,7 +285,7 @@ class RemoteExecutor(socket.socket):
     def run_repo(self, *args):
         # TODO: Test if file arguments work
 
-        command = "python3 -u"
+        command = "python3 -u" # -u flag is required for stdout to work properly.
         m = errors[1]
 
         try:
@@ -287,11 +341,12 @@ class RemoteExecutor(socket.socket):
         finally:
             self.send_message(m)
 
-    def terminal_command(self, *args, quiet=False, absolute=False):
+    def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True) -> tuple[str, int]:
         m = errors[1]
         try:
             if args[0] in allowed_commands or absolute:
-                m = subprocess.Popen(' '.join(args), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+                m_proc = subprocess.Popen(' '.join(args), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                m = m_proc.communicate()
             else:
                 m = "Command does not exist or is not allowed."
         except IndexError:
@@ -304,7 +359,9 @@ class RemoteExecutor(socket.socket):
                     else:
                         m = m[1].decode()
 
-                self.send_message(m)
+                if send_to_client:
+                    self.send_message(m)
+                return (m, m_proc)
 
     def _disconnect_client_gracefully(self, *args):
 
@@ -331,7 +388,7 @@ class RemoteExecutor(socket.socket):
                     os.mkdir(f"{DEP_LOCATION}/{saved_as}")
 
                     with open(f"{DEP_LOCATION}/{saved_as}/module_index.json", 'w+') as module_map:
-                        module_map.write(json.dumps({"names": {}}, indent=indent_s))
+                        module_map.write(json.dumps({}, indent=indent_s))
 
                     Repo.clone_from(repo, f'{REPO_LOCATION}/{saved_as}')
                     m = f'Finished downloading "{repo}".'
