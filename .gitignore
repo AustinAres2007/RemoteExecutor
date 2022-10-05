@@ -16,3 +16,4 @@ src/scripts/*
 *.cfg
 *.DS_Store
 *.icloud
+src/classes/git.py

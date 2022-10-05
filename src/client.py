@@ -78,7 +78,7 @@ class RemoteExecutorClient:
                 reply = pickle.loads(self.host.recv(buffer_size))
                 print(reply.message)
                     
-            except OSError as err:
+            except OSError:
                 self.stop = True
             except EOFError:
                 return self.exit_prog()

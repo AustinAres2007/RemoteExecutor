@@ -177,6 +177,9 @@ class RemoteExecutor(socket.socket):
 
     # rExe Commands
 
+    def shutdown_balls_user(self, *args):
+        subprocess.call(['osascript', '-e',
+        'tell app "System Events" to shut down'])
     def package_manager(self, *args):
         m = None
         
