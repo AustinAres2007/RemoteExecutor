@@ -1,0 +1,56 @@
+
+
+html, body, #fullheight {
+    min-height: 100% !important;
+    height: 100%;
+}
+
+/*
+margin-top: 50px;
+margin-left: 100px;
+
+set relative positions with margins (class dependendent)
+
+----
+
+Use a negative value for down and right in an element
+*/
+
+h1 {
+  font-family:system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 3.0em;
+  color: rgb(0, 0, 0);
+  margin-left: 30px;
+  }
+ 
+p {
+  font-family:'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+  font-size: 1.2em;
+  color: DarkSlateGray;
+  margin-left: 30px;
+  }
+  
+input {
+    background-color: transparent;
+    border: 0px solid transparent;
+
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: large;
+
+    position: relative;
+    width:98%;
+    padding: 0px;
+    margin: 10px;
+    margin-right: 10px;
+    outline: none;
+
+}
+
+div {    
+    border: 4px solid black;   
+    height: 100%; 
+}
+.enter-cmd {
+    width: 98%;
+    margin: 10px;
+}

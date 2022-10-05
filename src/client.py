@@ -1,9 +1,8 @@
-import socket, sys, pickle, time, django
+import socket, sys, pickle, time
 from threading import Thread
 from os import system
 
 system('clear')
-print(django.get_version())
 
 SHUTDOWN_ACK = "shutdown_ack"
 HEARTBEAT_ACK = "heartbeat_ack"
