@@ -57,6 +57,8 @@ class RemoteExecutorClient:
             except (ConnectionRefusedError, ConnectionError):
                 return error("Server refused connection / the server does not exist.")
 
+        time.sleep(0.2)
+        print(self.host)
         try:
             print(f"Sending {__VERSION__} as client version.")
             self.send(__VERSION__)
