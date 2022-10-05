@@ -23,7 +23,7 @@ if not (SERVER_PORT > 0 and SERVER_PORT <= 65535):
     error("Please chose a port between 1 - 65535")
 
 os_errors = {
-    9: "Closed.",
+    #9: "Closed.",
     32: "Disconnected from host, the host either crashed or you lost connection. Try again."
 }
 
@@ -58,6 +58,7 @@ class RemoteExecutorClient:
                 return error("Server refused connection / the server does not exist.")
 
         try:
+            print(f"Sending {__VERSION__} as client version.")
             self.send(__VERSION__)
             version_conf = self.host.recv(BUFFER).decode()
 
