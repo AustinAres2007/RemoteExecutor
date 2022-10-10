@@ -7,7 +7,7 @@ IP = "0.0.0.0"
 PORT = 2022
 PASSWORD = ""
 
-with RemoteExecutorClient(IP, PORT) as client_instance:
+with RemoteExecutorClient(IP, PORT, PASSWORD) as client_instance:
     try:
         while True:
             client_instance.send_command(input("Remote Executor > "), get_message, ignore_unknown=True)  
