@@ -1,11 +1,10 @@
 
-import socket, sys, pickle, os, shutil, subprocess, time, git, config, json
+import socket, sys, os, shutil, subprocess, time, git, config, json
 
-from classes.message import *
 from git import Repo
 from threading import Thread
 from sysconfig import get_paths
-from typing import Union
+from typing import Literal, Union
 
 REPO_LOCATION = "src/scripts"
 DEP_LOCATION = "src/dependencies" # Not Johnny Depp
@@ -35,6 +34,7 @@ TODO:
 
 HEATBEAT_ACK = "heartbeat_ack"
 SHUTDOWN_ACK = "shutdown_ack"
+TERMINATE_ACK = "\nterminate_msg_ack"
 
 try:
     HOST, PORT = sys.argv[1:]
@@ -49,6 +49,7 @@ errors = {
     3: "Corrupted module-index.json file."
 }
 os_errors = {
+    8: "Unbindable hostname.",
     17: "Package already exists.",
     48: "Address already binded too, please kill any remaining connections or use a different port.",
     49: "Cannot assign to supplied address. Use the local address of your device.",
@@ -170,16 +171,13 @@ class RemoteExecutor(socket.socket):
 
         super().__init__(*args, **kwargs)
 
-    def send_message(self, message: str, with_newline=True, raw=False):
-    
-        msg = Message(str(f"{nl if with_newline else ''}{message}"), 0, self.host)
-        self.client.sendall(pickle.dumps(msg) if not raw else message.encode())
+    def send_message(self, message: str, terminate: bool=False):
+        if terminate:
+            message += TERMINATE_ACK
+
+        self.client.sendall(message.encode())
 
     # rExe Commands
-
-    def shutdown_balls_user(self, *args):
-        subprocess.call(['osascript', '-e',
-        'tell app "System Events" to shut down'])
     def package_manager(self, *args):
         m = None
         
@@ -262,17 +260,20 @@ class RemoteExecutor(socket.socket):
         except (IndexError, ValueError):
             m = f"{errors[0]} {help}"
         finally:
-            self.send_message(m)
+            self.send_message(m, True)
 
     def show_repos(self, *args):
-        self.send_message('\n'.join([r for r in os.listdir("src/scripts") if os.path.isdir(f"src/scripts/{r}")])+"\n..")
+        self.send_message('\n'.join([r for r in os.listdir("src/scripts") if os.path.isdir(f"src/scripts/{r}")])+"\n..", True)
 
     def terminate_executing_script(self, *a):
+        m = errors[1]
         if self.proc:
             self.proc.kill()
-            self.send_message("Terminated the script.")
+            m = "Terminated the script."
         else:
-            self.send_message("No script running.")
+            m = "No script running."
+        
+        self.send_message(m, True)
 
     def send_help(self, *args):
         help_msg = ""
@@ -280,7 +281,7 @@ class RemoteExecutor(socket.socket):
             if cmd[1]:
                 help_msg += f"{cmd[2]} - {cmd[1]}\n"
 
-        self.send_message(help_msg)
+        self.send_message(help_msg, True)
     
     def _execute_repo_thread(self, *a):
         Thread(target=self.run_repo, args=(*a,)).start()
@@ -314,11 +315,11 @@ class RemoteExecutor(socket.socket):
 
                     for line in self.proc.stdout:
                         time.sleep(0.025)
-                        self.send_message(line.decode().strip(), with_newline=False)
+                        self.send_message(line.decode().strip())
                 
                     for error in self.proc.stderr:
                         time.sleep(0.025)
-                        self.send_message(error.decode(), with_newline=False)
+                        self.send_message(error.decode())
 
                 else:
                     m = "Finished Executing."
@@ -329,9 +330,10 @@ class RemoteExecutor(socket.socket):
             m = errors[2]
         finally:
             self.proc = None
-            self.send_message(m)
+            self.send_message(m, True)
 
     def remove_repo(self, *args):
+        m = errors[1]
         try:
             repo = args[0]
             m = f'Removed the repo "{repo}"'
@@ -342,9 +344,9 @@ class RemoteExecutor(socket.socket):
         except OSError:
             m = errors[2]
         finally:
-            self.send_message(m)
+            self.send_message(m, True)
 
-    def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True) -> tuple[str, int]:
+    def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True) -> tuple[str, Union[tuple[bytes, bytes], int]]:
         m = errors[1]
         m_proc = 1
         try:
@@ -364,7 +366,7 @@ class RemoteExecutor(socket.socket):
                         m = m[1].decode()
 
                 if send_to_client:
-                    self.send_message(m)
+                    self.send_message(m, terminate=True)
                 return (m, m_proc)
 
     def _disconnect_client_gracefully(self, *args):
@@ -379,43 +381,43 @@ class RemoteExecutor(socket.socket):
     def download_repo(self, *args):
         m = errors[1]
         try:
-
             repo = args[0]
             saved_as = args[1]
-        
-            if os.path.exists(f"{REPO_LOCATION}/{saved_as}") and os.path.exists(f"{DEP_LOCATION}/{saved_as}"):
-                m = "Repo with that folder name already exists."
-            else:
-                try:
-                    self.send_message(f'Attempting to download "{repo}"..')
-                    os.mkdir(f"{REPO_LOCATION}/{saved_as}")
-                    os.mkdir(f"{DEP_LOCATION}/{saved_as}")
+            try:
+                if os.path.exists(f"{REPO_LOCATION}/{saved_as}") and os.path.exists(f"{DEP_LOCATION}/{saved_as}"):
+                    m = "Repo with that folder name already exists."
+                else:
+                    try:
+                        self.send_message(f'Attempting to download "{repo}"..')
+                        os.mkdir(f"{REPO_LOCATION}/{saved_as}")
+                        os.mkdir(f"{DEP_LOCATION}/{saved_as}")
 
-                    with open(f"{DEP_LOCATION}/{saved_as}/module_index.json", 'w+') as module_map:
-                        module_map.write(json.dumps({}, indent=indent_s))
+                        with open(f"{DEP_LOCATION}/{saved_as}/module_index.json", 'w+') as module_map:
+                            module_map.write(json.dumps({}, indent=indent_s))
 
-                    Repo.clone_from(repo, f'{REPO_LOCATION}/{saved_as}')
-                    m = f'Finished downloading "{repo}".'
-                except Exception as e:
-                    m = f"Could not clone repo, error: {e}"
-                    remove_many([f"{REPO_LOCATION}/{saved_as}", f"{DEP_LOCATION}/{saved_as}"])
+                        Repo.clone_from(repo, f'{REPO_LOCATION}/{saved_as}')
+                        m = f'Finished downloading "{repo}".'
+                    except Exception as e:
+                        m = f"Could not clone repo, error: {e}"
+                        remove_many([f"{REPO_LOCATION}/{saved_as}", f"{DEP_LOCATION}/{saved_as}"])
 
+            except git.exc.GitCommandError:
+                os.rmdir(f"src/scripts/{saved_as}")
+                
+            m = errors[2]
         except IndexError:
             m = errors[0]
-        except git.exc.GitCommandError:
-            os.rmdir(f"src/scripts/{saved_as}")
-            m = errors[2]
         finally:
-            self.send_message(m)
+            self.send_message(m, True)
             
     def status(self, *args):
-        self.send_message("200")
+        self.send_message("200", True)
 
     def bind(self, __address) -> None:
         self.host = __address
         return super().bind(__address)
 
-    def process_client(self) -> str:
+    def process_client(self):
         
         try:
             if self.client:
@@ -465,21 +467,22 @@ class RemoteExecutor(socket.socket):
                 client_version = wait_for_input(config_object['VERSION'])
 
                 if not client_version[0]:
-                    self.send_message("Incorrect client version.", raw=True)
+                    self.send_message("Incorrect client version.")
                     next_client(); return
-                self.send_message("True", raw=True)
+                self.send_message("True")
 
                 client_password = wait_for_input(config_object['PASSWORD'])
                 if config_object["PASSWORD"] and not client_password[0]:
-                    self.send_message("Incorrect Password.", raw=True)
+                    self.send_message("Incorrect Password.")
                     next_client(); return
-                self.send_message("True", raw=True)
+
+                self.send_message("True")
 
                 self.client_info = {'ver': client_version[1], 'password': client_password[1]}
                 time.sleep(0.01)
 
                 # Welcome message
-                self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}")
+                #self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}", True)
                 Thread(target=heartbeat).start()
 
                 while self.client:

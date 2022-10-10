@@ -1,157 +1,152 @@
-import socket, sys, pickle, time
-from threading import Thread
-from os import system
+import socket, time
+from typing import Callable, Union as _Union
 
-system('clear')
+class RemoteExecutorError(Exception):
+    def __init__(self, error, errno: int):
+        self.error = error
+        self.errno = errno
 
-SHUTDOWN_ACK = "shutdown_ack"
-HEARTBEAT_ACK = "heartbeat_ack"
-BUFFER = 4096
-__VERSION__ = 1.3
-COMMAND_INPUT_NOTIF = "\n> "
+        super().__init__(f"{error} [Error number: {errno}]")
 
-os_errors = {
-    9: "Closed.",
-    32: "Disconnected from host, the host either crashed or you lost connection. Try again."
-}
-
-def error(string):
-    print(string)
-    return sys.exit(1)
 
 class RemoteExecutorClient:
 
-    def __init__(self, debug: bool=False):
-        self.debug = debug
-        self.stop = False
+    def __exit__(self, _exc_type, _exc_value, _exc_traceback):
+        self.disconnect()
+    
+    def __enter__(self):
+        self.connect()
+        return self
 
-    def exit_prog(self):    
-        try:    
-            self.send(SHUTDOWN_ACK)
-            self.host.close()
-        except:
-            pass
+    def __init__(self, address: str, port: int, password: _Union[str, None]=None) -> None:
+        """
+        Remote Executor Client
+        """
 
-    def send(self, message: str):
+        self.__os_errors__ = {
+            9: "Closed.",
+            32: "Disconnected from host, the host either crashed or you lost connection. Try again."
+        }
+        self.__api_errors__ = {
+            1: "Cannot run module directly.",
+            2: "Incomplete server reply. (PickleError)",
+            3: "Connection was reset, closed, or abandoned by host.",
+            4: "Incorrect Password.",
+            5: "Incorrect Client Version.",
+            6: "General network issue.",
+            7: "Host does not exist.",
+            8: "Command does not exist."
+        }
+
+        self.commands = {
+            "status": (lambda: None, False),
+            "clone": (lambda: None, False),
+            "sys": (lambda: None, False),
+            "rm": (lambda: None, False),
+            "exit": (lambda: self.disconnect(), True),
+            "run": (lambda: None, False),
+            "help": (lambda: None, False),
+            "terminate": (lambda: None, False),
+            "repos": (lambda: None, False),
+            "pkg": (lambda: None, False)
+        }
+
+        if not (int(port) > 0 and int(port) <= 65535):
+            raise RemoteExecutorError(self.__api_errors__[7], 7)
+
+        self.address = address
+        self.port = port
+        self.password = password
+
+        self.__STOP__ = False
+        self.__SHUTDOWN_ACK__ = "shutdown_ack"
+        self.__HEARTBEAT_ACK__ = "heartbeat_ack"
+        self.__TERMINATE_MSG_ACK__ = "terminate_msg_ack"
+        self.__BUFFER__ = 4096
+        self.__VERSION__ = "1.3"
+
+    def __send__(self, message: _Union[str, None]) -> None:
         try:
             self.host.sendall(str(message if message else ".").encode())
         except OSError as osr:
-            return error(os_errors[osr.errno])
+            raise RemoteExecutorError(self.__os_errors__[osr.errno], 6)
 
-    def connection_protocol(self):
+    def __connection_protocol__(self) -> _Union[bool, None]:
         try:
-            self.send(__VERSION__)
-            version_conf = self.host.recv(BUFFER).decode()
+            self.__send__(self.__VERSION__)
+            version_conf = self.host.recv(self.__BUFFER__).decode()
 
             if version_conf != 'True':
-                self.exit_prog()
-                return error(version_conf)
-            elif version_conf not in ["Incorrect client version.", "True"]:
-                print(version_conf)
+                raise RemoteExecutorError(self.__api_errors__[5], 5)
+            
+            if not self.password:   
+                self.password = self.password if self.password else '.'
 
-            self.send(input("Host Password (If not needed, press enter): "))
-            password_conf = self.host.recv(BUFFER).decode()
+            self.__send__(self.password)
+            password_conf = self.host.recv(self.__BUFFER__).decode()
 
             if password_conf != 'True':
-                self.exit_prog()
-                return error("Incorrect host password.")
+                raise RemoteExecutorError(self.__api_errors__[4], 4)
             
             return True
-        except KeyboardInterrupt:
-            self.exit_prog()
-        except ConnectionResetError:
-            return sys.exit(1)
 
-    def heartbeat_rythm(self):
-        while self.stop:
+        except ConnectionResetError:
+            raise RemoteExecutorError(self.__api_errors__[3], 3)
+
+    def __heartbeat_rythm__(self) -> None:
+        while self.__STOP__:
             for _ in range(25):
                 time.sleep(1)
 
-            self.send(HEARTBEAT_ACK)
+            self.__send__(self.__HEARTBEAT_ACK__)
 
-    def listen_for_messages(self):
-        buffer_size = 512*512
-        self.stop = False
-
-        while not self.stop:
-            try:
-                reply = pickle.loads(self.host.recv(buffer_size))
-                print(reply.message)
-                    
-            except OSError:
-                self.stop = True
-            except EOFError:
-                return self.exit_prog()
-            except pickle.UnpicklingError:
-                return sys.exit(1)
-    
-    def listen_for_commands(self):
+    def __recieve_output__(self) -> str:
+        OUT = ""
         try:
-            SERVER_HOST: str = sys.argv[1]
-            SERVER_PORT: int = int(sys.argv[2])
+            data = self.host.recv(512*512)
+            OUT = data.decode().strip()
+        except:
+            pass
+        finally:
+            return OUT
 
-            if not (SERVER_PORT > 0 and SERVER_PORT <= 65535):
-                return error("Please chose a port between 1 - 65535")
-        except IndexError:
-            return error("Not enough parameters in run arguments.")
-        except ValueError:
-            return error("The port parameter is a string type, not integer. (File Argument format: <host-ip> <port>)")
-        else:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as re_client:
-                self.host = re_client
-                try:
+    def connect(self) -> socket.socket:
+        self.host = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.host.connect((self.address, self.port))
+        self.host.settimeout(5.0)
+
+        self.__connection_protocol__()
+        return self.host
         
-                    self.host.connect((SERVER_HOST, SERVER_PORT))
-                    commands = {
-                            "status": (lambda: None, False),
-                            "clone": (lambda: None, False),
-                            "sys": (lambda: None, False),
-                            "rm": (lambda: None, False),
-                            "exit": (lambda: self.exit_prog(), True),
-                            "run": (lambda: None, False),
-                            "help": (lambda: None, False),
-                            "terminate": (lambda: None, False),
-                            "repos": (lambda: None, False),
-                            "pkg": (lambda: None, False)
-                    }
-                    
-                except (ConnectionRefusedError, ConnectionError):
-                    return error("Server refused connection / the server does not exist.")
-                
-                else:
-                    con = self.connection_protocol()
+    def disconnect(self) -> None:    
+        try:    
+            self.__send__(self.__SHUTDOWN_ACK__)
+            self.host.close()
+            self.host = None
+        except:
+            pass
 
-                    if con:
-                        message_thread = Thread(target=self.listen_for_messages)
-                        message_thread.start()
-                        pulse_thread = Thread(target=self.heartbeat_rythm)
-                        pulse_thread.start()
+    def send_command(self, command: str, handle_f: _Union[Callable, None], ignore_unknown=False) -> None:
+        try:
+            command_func = self.commands[command.split(" ")[0]]
+            command_func[0]()
 
-                        while not self.stop:
-                            try:
-                                time.sleep(.5)
-                                command_name = input()
-                                command = commands[command_name.split(' ')[0]]
-                                command[0]()
+            if not command_func[1]:
+                self.__send__(command)
 
-                                if not command[1]:
-                                    self.send(command_name)
-                                else:
-                                    print("Ending")
-                                    self.stop = True      
-                            except KeyboardInterrupt:
-                                self.exit_prog()
-                                return error("Shutting down client.")
-                            except KeyError:
-                                print("\nSpecified command does not exist.", end=COMMAND_INPUT_NOTIF)
+            while not self.__STOP__ and self.host:
+                cmd_return: str = self.__recieve_output__()
 
-                            except UnboundLocalError:
-                                return
-                    else:
-                        return
+                if handle_f:
+                    handle_f(cmd_return.split(self.__TERMINATE_MSG_ACK__)[0])
 
-if __name__ == "__main__":
-    try:
-        RemoteExecutorClient(bool(int(sys.argv[3]))).listen_for_commands()
-    except (IndexError, ValueError):
-        print("Missing Command line arguments. (<IP> <PORT> <DEBUG || 1 / 0>)")
+                if self.__TERMINATE_MSG_ACK__ in cmd_return:
+                    break
+            
+            else:
+                raise RemoteExecutorError(self.__api_errors__[3], 3)
+        except KeyError:
+            if not ignore_unknown:
+                raise RemoteExecutorError(self.__api_errors__[8], 8)
+            
+        
