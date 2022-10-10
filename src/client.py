@@ -1,4 +1,5 @@
 import socket, time
+from threading import Thread as _Thread
 from typing import Callable, Union as _Union
 
 class RemoteExecutorError(Exception):
@@ -88,10 +89,14 @@ class RemoteExecutorClient:
             if password_conf != 'True':
                 raise RemoteExecutorError(self.__api_errors__[4], 4)
             
+            print(self.host.recv(self.__BUFFER__).decode().split(self.__TERMINATE_MSG_ACK__)[0])
+
             return True
 
         except ConnectionResetError:
             raise RemoteExecutorError(self.__api_errors__[3], 3)
+        except ValueError:
+            raise RemoteExecutorError(self.__api_errors__[7], 7)
 
     def __heartbeat_rythm__(self) -> None:
         while self.__STOP__:
@@ -126,25 +131,28 @@ class RemoteExecutorClient:
         except:
             pass
 
-    def send_command(self, command: str, handle_f: _Union[Callable, None], ignore_unknown=False) -> None:
+    def send_command(self, command: str, handle_f: _Union[Callable, None], ignore_unknown=False, blocking: bool=True) -> None:
         try:
-            command_func = self.commands[command.split(" ")[0]]
-            command_func[0]()
+            def __handle_command():
+                command_func = self.commands[command.split(" ")[0]]
+                command_func[0]()
 
-            if not command_func[1]:
-                self.__send__(command)
+                if not command_func[1]:
+                    self.__send__(command)
 
-            while not self.__STOP__ and self.host:
-                cmd_return: str = self.__recieve_output__()
+                while not self.__STOP__ and self.host:
+                    cmd_return: str = self.__recieve_output__()
 
-                if handle_f:
-                    handle_f(cmd_return.split(self.__TERMINATE_MSG_ACK__)[0])
+                    if isinstance(handle_f, Callable):
+                        handle_f(cmd_return.split(self.__TERMINATE_MSG_ACK__)[0])
 
-                if self.__TERMINATE_MSG_ACK__ in cmd_return:
-                    break
+                    if self.__TERMINATE_MSG_ACK__ in cmd_return:
+                        break
+                
+                else:
+                    raise RemoteExecutorError(self.__api_errors__[3], 3)
             
-            else:
-                raise RemoteExecutorError(self.__api_errors__[3], 3)
+            __handle_command() if blocking else _Thread(target=__handle_command).start()
         except KeyError:
             if not ignore_unknown:
                 raise RemoteExecutorError(self.__api_errors__[8], 8)

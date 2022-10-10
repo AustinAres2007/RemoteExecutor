@@ -403,7 +403,7 @@ class RemoteExecutor(socket.socket):
 
             except git.exc.GitCommandError:
                 os.rmdir(f"src/scripts/{saved_as}")
-                
+
             m = errors[2]
         except IndexError:
             m = errors[0]
@@ -482,7 +482,7 @@ class RemoteExecutor(socket.socket):
                 time.sleep(0.01)
 
                 # Welcome message
-                #self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}", True)
+                self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}", True)
                 Thread(target=heartbeat).start()
 
                 while self.client:
