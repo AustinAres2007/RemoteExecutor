@@ -149,7 +149,7 @@ class RemoteExecutor(socket.socket):
 
     def __init__(self, *args, **kwargs):
         # Format for adding new commands: <command-name>: (func, "help message", "name-to-be-shown-at-help-message")
-        # If None is entered in the help message, it is considered private, and will not be shown in the help command.
+        # If None is entered in the help message, it is considered private / system, and will not be shown in the help command.
 
         self.command_list = {
             "status": (lambda *a: self.status(*a), "A debug message, good to see if your connected to host.", "status"), 
@@ -159,6 +159,7 @@ class RemoteExecutor(socket.socket):
             "run": (lambda *a: self._execute_repo_thread(*a), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
             SHUTDOWN_ACK: (lambda *a: self._disconnect_client_gracefully(*a), None, 'shutdown signal'),
             HEATBEAT_ACK: (lambda *a: self._update_pulse(*a), None, "heatbeat acknowledgement"),
+            "dvcs":(lambda *a: self.dvcs_manager(*a), None, "Git control system for client API"),
             "help": (lambda *a: self.send_help(*a), "This command.", 'help'),
             "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
             "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos'),
@@ -177,6 +178,19 @@ class RemoteExecutor(socket.socket):
         self.client.sendall(message.encode())
 
     # rExe Commands
+    def dvcs_manager(self, *args):
+        m = errors[1]
+        try:
+            subcommand = args[0]
+
+            if subcommand == "set":
+                self.client_info["selected_repo"] = args[1]
+                m = f'Set selected repo to "{args[1]}"'
+        except IndexError:
+            m = errors[0]
+        finally:
+            self.send_message(m, True)
+
     def package_manager(self, *args):
         m = None
         
@@ -474,7 +488,7 @@ class RemoteExecutor(socket.socket):
 
                 self.send_message("True")
 
-                self.client_info = {'ver': client_version[1], 'password': client_password[1]}
+                self.client_info = {'ver': client_version[1], 'password': client_password[1], 'selected_repo': None}
                 time.sleep(0.01)
 
                 # Welcome message
@@ -487,17 +501,22 @@ class RemoteExecutor(socket.socket):
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 print(f"{addr[0]} Disconnected Forcefully.")
                 self.client = None
+
             except AttributeError:
                 sys.exit(0)
+
             except KeyboardInterrupt:
                 if self.client:
                     self._disconnect_client_gracefully()
                 sys.exit(0)
 
 if __name__ == "__main__":
-    if float(sys.version.split(" ")[0][:1]) < 3.10 and sys.platform == "darwin":
-        main()
+    if (float(sys.version.split(" ")[0][:4]) == 3.10 and sys.platform == "darwin" and os.system("git --version && clear") == 0):
+        print("Passed requirement check."); main()
     else:
-        print("Either Python version is too old (3.10 and newer) or you are not running MacOS.")
+        print(f"""Either Python version is too old (3.10 and newer, you are running {sys.version.split(' ')[0]})
+        you are not running Darwin (You are running {sys.platform})
+        or Git is not installed.""")
+
 
         

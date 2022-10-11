@@ -1,3 +1,4 @@
+from ast import Call
 import socket, time
 from threading import Thread as _Thread
 from typing import Callable, Union as _Union
@@ -19,7 +20,7 @@ class RemoteExecutorClient:
         self.connect()
         return self
 
-    def __init__(self, address: str, port: int, password: _Union[str, None]=None) -> None:
+    def __init__(self, address: str, port: int, password: _Union[str, None]=None, output_function: _Union[Callable, None]=None) -> None:
         """
         Remote Executor Client
         """
@@ -58,6 +59,7 @@ class RemoteExecutorClient:
         self.address = address
         self.port = port
         self.password = password
+        self.output_function = output_function
 
         self.__STOP__ = False
         self.__SHUTDOWN_ACK__ = "shutdown_ack"
@@ -115,6 +117,22 @@ class RemoteExecutorClient:
         finally:
             return OUT
 
+    def __send_and_recieve__(self, message: _Union[str, None]=None):
+        self.__send__(message)
+
+        while not self.__STOP__ and self.host:
+            cmd_return: str = self.__recieve_output__()
+
+            if isinstance(self.output_function, Callable):
+                self.output_function(cmd_return.split(self.__TERMINATE_MSG_ACK__)[0])
+
+            if self.__TERMINATE_MSG_ACK__ in cmd_return:
+                break
+        
+        else:
+            raise RemoteExecutorError(self.__api_errors__[3], 3)
+
+
     def connect(self) -> socket.socket:
         self.host = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.host.connect((self.address, self.port))
@@ -131,30 +149,21 @@ class RemoteExecutorClient:
         except:
             pass
 
-    def send_command(self, command: str, handle_f: _Union[Callable, None], ignore_unknown=False, blocking: bool=True) -> None:
+    def send_command(self, command: str, ignore_unknown=False, blocking: bool=True) -> None:
         try:
             def __handle_command():
                 command_func = self.commands[command.split(" ")[0]]
                 command_func[0]()
 
                 if not command_func[1]:
-                    self.__send__(command)
+                    self.__send_and_recieve__(command)
 
-                while not self.__STOP__ and self.host:
-                    cmd_return: str = self.__recieve_output__()
 
-                    if isinstance(handle_f, Callable):
-                        handle_f(cmd_return.split(self.__TERMINATE_MSG_ACK__)[0])
-
-                    if self.__TERMINATE_MSG_ACK__ in cmd_return:
-                        break
-                
-                else:
-                    raise RemoteExecutorError(self.__api_errors__[3], 3)
-            
             __handle_command() if blocking else _Thread(target=__handle_command).start()
+    
         except KeyError:
             if not ignore_unknown:
                 raise RemoteExecutorError(self.__api_errors__[8], 8)
-            
         
+    def git_repository(self, repository: str):
+        self.__send_and_recieve__(f"dvcs set {repository}")
