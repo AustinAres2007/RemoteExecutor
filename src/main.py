@@ -1,5 +1,5 @@
 
-import socket, sys, os, shutil, subprocess, time, git, config, json
+import socket, sys, os, shutil, subprocess, time, config, json
 
 from threading import Thread
 from sysconfig import get_paths
@@ -382,26 +382,23 @@ class RemoteExecutor(socket.socket):
         try:
             repo = args[0]
             saved_as = args[1]
-            try:
-                if os.path.exists(f"{REPO_LOCATION}/{saved_as}") and os.path.exists(f"{DEP_LOCATION}/{saved_as}"):
-                    m = "Repo with that folder name already exists."
-                else:
-                    try:
-                        self.send_message(f'Attempting to download "{repo}"..')
-                        os.mkdir(f"{REPO_LOCATION}/{saved_as}")
-                        os.mkdir(f"{DEP_LOCATION}/{saved_as}")
+            
+            if os.path.exists(f"{REPO_LOCATION}/{saved_as}") and os.path.exists(f"{DEP_LOCATION}/{saved_as}"):
+                m = "Repo with that folder name already exists."
+            else:
+                try:
+                    self.send_message(f'Attempting to download "{repo}"..')
+                    os.mkdir(f"{REPO_LOCATION}/{saved_as}")
+                    os.mkdir(f"{DEP_LOCATION}/{saved_as}")
 
-                        with open(f"{DEP_LOCATION}/{saved_as}/module_index.json", 'w+') as module_map:
-                            module_map.write(json.dumps({}, indent=indent_s))
+                    with open(f"{DEP_LOCATION}/{saved_as}/module_index.json", 'w+') as module_map:
+                        module_map.write(json.dumps({}, indent=indent_s))
 
-                        self.terminal_command(f"git clone {repo} {saved_as}", absolute=True, path=REPO_LOCATION)
-                        m = f'Finished downloading "{repo}".'
-                    except Exception as e:
-                        m = f"Could not clone repo, error: {e}"
-                        remove_many([f"{REPO_LOCATION}/{saved_as}", f"{DEP_LOCATION}/{saved_as}"])
-
-            except git.exc.GitCommandError:
-                os.rmdir(f"src/scripts/{saved_as}")
+                    self.terminal_command(f"git clone {repo} {saved_as}", absolute=True, path=REPO_LOCATION)
+                    m = f'Finished downloading "{repo}".'
+                except Exception as e:
+                    m = f"Could not clone repo, error: {e}"
+                    remove_many([f"{REPO_LOCATION}/{saved_as}", f"{DEP_LOCATION}/{saved_as}"])
 
             m = errors[2]
         except IndexError:
