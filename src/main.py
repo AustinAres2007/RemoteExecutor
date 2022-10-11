@@ -1,10 +1,9 @@
 
 import socket, sys, os, shutil, subprocess, time, git, config, json
 
-from git import Repo
 from threading import Thread
 from sysconfig import get_paths
-from typing import Literal, Union
+from typing import Union
 
 REPO_LOCATION = "src/scripts"
 DEP_LOCATION = "src/dependencies" # Not Johnny Depp
@@ -346,12 +345,12 @@ class RemoteExecutor(socket.socket):
         finally:
             self.send_message(m, True)
 
-    def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True) -> tuple[str, Union[tuple[bytes, bytes], int]]:
+    def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True, path: Union[os.PathLike, None, str]=None) -> tuple[str, Union[tuple[bytes, bytes], int]]:
         m = errors[1]
         m_proc = 1
         try:
-            if args[0] in allowed_commands or absolute:
-                m_proc = subprocess.Popen(' '.join(args), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if (args[0] in allowed_commands) or absolute:
+                m_proc = subprocess.Popen(' '.join(args), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=path)
                 m = m_proc.communicate()
             else:
                 m = "Command does not exist or is not allowed."
@@ -395,7 +394,7 @@ class RemoteExecutor(socket.socket):
                         with open(f"{DEP_LOCATION}/{saved_as}/module_index.json", 'w+') as module_map:
                             module_map.write(json.dumps({}, indent=indent_s))
 
-                        Repo.clone_from(repo, f'{REPO_LOCATION}/{saved_as}')
+                        self.terminal_command(f"git clone {repo} {saved_as}", absolute=True, path=REPO_LOCATION)
                         m = f'Finished downloading "{repo}".'
                     except Exception as e:
                         m = f"Could not clone repo, error: {e}"
