@@ -1,4 +1,3 @@
-
 import socket, sys, os, shutil, subprocess, time, config, json
 
 from threading import Thread
@@ -90,31 +89,7 @@ def main():
     except OSError as ose:
         return print(os_errors[int(ose.errno)])
         
-default = {"blacklist": []}
 indent_s = 4
-
-def write_blacklist(ip: str=None, clear=False) -> None:
-    with open("src/host-sources/blacklist.json", "w") as blacklist_file:
-        if clear:
-            blacklist_file.write(json.dumps(default, indent=indent_s))
-        else:
-            try:
-                bl_file = get_blacklist()
-                bl_file["blacklist"].append(ip)
-
-                blacklist_file.write(json.dumps(bl_file, indent=indent_s))
-            except json.decoder.JSONDecodeError:
-                write_blacklist(clear=True)
-
-def get_blacklist() -> dict:
-    try:
-        with open("src/host-sources/blacklist.json", "r") as blacklist_file:
-            return json.loads(blacklist_file.read())
-    except FileNotFoundError:
-        return default
-    except json.decoder.JSONDecodeError:
-        write_blacklist(clear=True)
-        return default
 
 def get_module_file(repo) -> Union[dict, str]:
     try:
@@ -137,7 +112,7 @@ def write_module_file(repo, keys: list, value: str) -> Union[dict, str]:
         return new_m_index
     return current_module_file
 
-def remove_without_err(path: str) -> None:
+def remove_without_error(path: str) -> None:
     if os.path.exists(path):
         shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
 
@@ -159,15 +134,16 @@ class RemoteExecutor(socket.socket):
             "run": (lambda *a: self._execute_repo_thread(*a), "Executes a python file, you must know the script path to run. (run <path-to-script>) Example: run RemoteExecutor/src/client.py", 'run'),
             SHUTDOWN_ACK: (lambda *a: self._disconnect_client_gracefully(*a), None, 'shutdown signal'),
             HEATBEAT_ACK: (lambda *a: self._update_pulse(*a), None, "heatbeat acknowledgement"),
-            "dvcs":(lambda *a: self.dvcs_manager(*a), None, "Git control system for client API"),
+            "cd":(lambda *a: self.cd(*a), "Changes directory the terminal is in when using sys command", "cd"),
             "help": (lambda *a: self.send_help(*a), "This command.", 'help'),
             "terminate": (lambda *a: self.terminate_executing_script(*a), "Terminates a script that is running.", "terminate"),
             "repos": (lambda *a: self.show_repos(*a), "Shows all repos downloaded.", 'repos'),
             "pkg": (lambda *a: self.package_manager(*a), "Downloads package for specified repo.", "pkg")
         }
+
         self.finished = False
         self.proc = self.client = None
-        self.bump = True
+        self.bump, self.path = True, '.'
 
         super().__init__(*args, **kwargs)
 
@@ -178,14 +154,16 @@ class RemoteExecutor(socket.socket):
         self.client.sendall(message.encode())
 
     # rExe Commands
-    def dvcs_manager(self, *args):
+
+    def cd(self, *args):
         m = errors[1]
         try:
-            subcommand = args[0]
+            if not os.path.isdir(args[0]):
+                m = "Incomplete Path / Path does not exist."
+            else:
+                self.path = args[0]
+                m = f'Changed terminal directory: "{args[0]}"'
 
-            if subcommand == "set":
-                self.client_info["selected_repo"] = args[1]
-                m = f'Set selected repo to "{args[1]}"'
         except IndexError:
             m = errors[0]
         finally:
@@ -227,14 +205,14 @@ class RemoteExecutor(socket.socket):
             except OSError as err:
                 return os_errors[int(err.errno)] if int(err.errno) in os_errors else err
             finally:
-                remove_without_err(f"{full_repo_path}/TEMP-PKG")
+                remove_without_error(f"{full_repo_path}/TEMP-PKG")
 
         def _uninstall_package(package: str, repo: str) -> str:
             module_index = get_module_file(repo)
             redirect_name = module_index.get(package, None)
 
             if redirect_name:
-                remove_without_err(f"{SITE_PACKAGES}/script_dependencies.pth")
+                remove_without_error(f"{SITE_PACKAGES}/script_dependencies.pth")
                 shutil.rmtree(f"{DEP_LOCATION}/{repo}/{redirect_name}")
 
                 return f"Removed {package} from {repo}."
@@ -362,6 +340,8 @@ class RemoteExecutor(socket.socket):
     def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True, path: Union[os.PathLike, None, str]=None) -> tuple[str, Union[tuple[bytes, bytes], int]]:
         m = errors[1]
         m_proc = 1
+        path = path if path else self.path
+
         try:
             if (args[0] in allowed_commands) or absolute:
                 m_proc = subprocess.Popen(' '.join(args), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=path)
@@ -383,7 +363,6 @@ class RemoteExecutor(socket.socket):
                 return (m, m_proc)
 
     def _disconnect_client_gracefully(self, *args):
-
         print(f"Client has disconnected.")
         self.client.close()
         self.client = None 
@@ -465,14 +444,6 @@ class RemoteExecutor(socket.socket):
                     self.client = None
                         
                 print(f"\n\n{'~'*15}\n\nConnection from {addr[0]}:{addr[1]}")
-
-                blacklist = get_blacklist()["blacklist"]
-                if addr[0] in blacklist:
-                    self.send_message("You are blacklisted. Disconnecting.", raw=True)
-                    time.sleep(0.2)
-                    self._disconnect_client_gracefully()
-
-                    return
 
                 client_version = wait_for_input(config_object['VERSION'])
 

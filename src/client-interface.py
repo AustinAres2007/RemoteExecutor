@@ -1,16 +1,23 @@
+import config
 from client import *
 
-def get_message(msg):
-    print(msg)
+cfg = config.Config("src/host-sources/client-config.cfg")
 
-IP = "192.168.1.190"
-PORT = 2022
-PASSWORD = ""
+if len(cfg.as_dict()) >= 4:
+    IP = cfg["IP"]
+    PORT = cfg["PORT"]
+    PASSWORD = cfg["PASSWORD"]
+    OUTPUT_METHOD = cfg["OUTPUT"]
 
-with RemoteExecutorClient(IP, PORT, PASSWORD, get_message) as client_instance:
-    try:
-        while True:
-            client_instance.send_command(input("Remote Executor > "), ignore_unknown=True)  
-    except RemoteExecutorError as error:
-        if error.errno == 3:
-            print("Closed.")
+    if OUTPUT_METHOD in ["DEFAULT"]:
+        with RemoteExecutorClient(IP, PORT, PASSWORD, globals()[OUTPUT_METHOD]) as client_instance:
+            try:
+                while True:
+                    client_instance.send_command(input("Remote Executor > "), ignore_unknown=True)  
+            except RemoteExecutorError as error:
+                if error.errno == 3:
+                    print("Closed.")
+
+
+else:
+    print("Config Keys Missing")

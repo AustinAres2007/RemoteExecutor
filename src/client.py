@@ -1,7 +1,8 @@
-from ast import Call
 import socket, time
 from threading import Thread as _Thread
 from typing import Callable, Union as _Union
+
+DEFAULT = print
 
 class RemoteExecutorError(Exception):
     def __init__(self, error, errno: int):
@@ -50,7 +51,8 @@ class RemoteExecutorClient:
             "help": (lambda: None, False),
             "terminate": (lambda: None, False),
             "repos": (lambda: None, False),
-            "pkg": (lambda: None, False)
+            "pkg": (lambda: None, False),
+            "cd": (lambda: None, False)
         }
 
         if not (int(port) > 0 and int(port) <= 65535):
@@ -66,7 +68,7 @@ class RemoteExecutorClient:
         self.__HEARTBEAT_ACK__ = "heartbeat_ack"
         self.__TERMINATE_MSG_ACK__ = "terminate_msg_ack"
         self.__BUFFER__ = 4096
-        self.__VERSION__ = "1.3"
+        self.__VERSION__ = "1.4"
 
     def __send__(self, message: _Union[str, None]) -> None:
         try:
@@ -164,6 +166,6 @@ class RemoteExecutorClient:
         except KeyError:
             if not ignore_unknown:
                 raise RemoteExecutorError(self.__api_errors__[8], 8)
-        
-    def git_repository(self, repository: str):
-        self.__send_and_recieve__(f"dvcs set {repository}")
+    
+    def change_terminal_directory(self, path):
+        self.__send_and_recieve__(f"cd {path}")

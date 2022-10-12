@@ -5,16 +5,13 @@ include/
 .vscode/
 
 __pycache__
-src/host-sources/*
 src/dependencies/*
 src/scripts/*
 !src/scripts/scripts-info.txt
 !src/dependencies/dependencies-info.txt
-!src/host-sources/host-config.cfg
-!src/host-sources/blacklist.json
 
-*.cfg
 *.DS_Store
 *.icloud
 
-src/scripts/client-experimentation.py
+pyvenv.cfg
+src/client-experimentation.py
