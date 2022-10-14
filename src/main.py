@@ -230,7 +230,7 @@ class RemoteExecutor(socket.socket):
 
         def _show_repos(repo, _) -> str:    
             try:
-                return '\n'.join([f'{DEP_LOCATION}/{repo}/{r} (When used in a command: "{r}" Uninstall Command: "pkg uninstall {r} demo")' for r in os.listdir(f"{DEP_LOCATION}/{repo}") if os.path.isdir(f"{DEP_LOCATION}/{repo}/{r}")])
+                return '\n'.join([f'{DEP_LOCATION}/{repo}/{r} (When used in a command: "{r}" Uninstall Command: "pkg uninstall {r} {repo}")' for r in os.listdir(f"{DEP_LOCATION}/{repo}") if os.path.isdir(f"{DEP_LOCATION}/{repo}/{r}")])
             except FileNotFoundError:
                 return errors[2]
         commands = {

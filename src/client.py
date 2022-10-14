@@ -344,7 +344,7 @@ class RemoteExecutorClient:
         ## No Parameters
         """
         repos = self.__send_and_recieve__("repos", -1, RETURNED, True)
-        return [item for item in repos.split("\n") if item]
+        return repos.split("\n")
     
     def clone_repo(self, repo_link: str, folder: str):
         """
@@ -433,6 +433,41 @@ class RemoteExecutorClient:
         """
         
         self.__send_and_recieve__(f"pkg install {package} {repo}")
+    
+    def uninstall_package(self, repo: str, package: str):
+        """
+        Uninstalls a package from the specified repository.
+        
+        ## Parameters
+        #### repo : str
+            The repository to uninstall the package from
+        #### package : str
+            The package to uninstall, uses the same names as pip, and others.
+        ## Returns : None
+        #### TimeoutError
+            Occurs when data cannot be send or recieved.
+        #### RemoteExecutorError
+            Occurs when the host is closed. 
+        """
+
+        self.__send_and_recieve__(f"pkg uninstall {package} {repo}")
+    
+    def show_packages(self, repo: str) -> list:
+        """
+        Show the installed packages for the specified repository.
+        
+        ## Parameters
+        #### repo : str
+            The repository to show the installed packages from.
+        ## Returns : list[str, ...]
+        ## Raises 
+        #### TimeoutError
+            Occurs when data cannot be send or recieved.
+        #### RemoteExecutorError
+            Occurs when the host is closed. 
+        """
+        packages = self.__send_and_recieve__(f"pkg show {repo} .", -1, RETURNED, True)
+        return [pkg.split(" ")[0] for pkg in packages.split("\n") if pkg]
 
 
 
