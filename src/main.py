@@ -35,16 +35,19 @@ SHUTDOWN_ACK = "shutdown_ack"
 TERMINATE_ACK = "\nterminate_msg_ack"
 
 try:
-    HOST, PORT = sys.argv[1:]
+    HOST, PORT = sys.argv[1:3]
     PORT = int(PORT)
 except ValueError:
     print("Port is a String, not Integer."); exit(1)
+except IndexError:
+    print("Missing port parameter."); exit(1)
     
 errors = {
     0: "Missing Arguments.",
     1: "Unknown Error.",
     2: "No repo with that name, or the repo has no dependencies folder.",
-    3: "Corrupted module-index.json file."
+    3: "Corrupted module_index.json file.",
+    4: "No package / repository with that name."
 }
 os_errors = {
     8: "Unbindable hostname.",
@@ -93,20 +96,20 @@ indent_s = 4
 
 def get_module_file(repo) -> Union[dict, str]:
     try:
-        with open(f"{DEP_LOCATION}/{repo}/module-index.json", 'r') as m_index:
+        with open(f"{DEP_LOCATION}/{repo}/module_index.json", 'r') as m_index:
             module_index = json.loads(m_index.read())
         return module_index
     except FileNotFoundError:
-        return "module-index.json file not found."
+        return {"error": "module_index.json file not found."}
     except json.decoder.JSONDecodeError:
-        return errors[3]
+        return {"error": errors[3]}
 
 def write_module_file(repo, keys: list, value: str) -> Union[dict, str]:
     current_module_file = get_module_file(repo)
     if isinstance(current_module_file, dict):
         new_m_index = current_module_file | {k: value for k in keys}
 
-        with open(f"{DEP_LOCATION}/{repo}/module-index.json", "w") as m_index:
+        with open(f"{DEP_LOCATION}/{repo}/module_index.json", "w") as m_index:
             m_index.write(json.dumps(new_m_index, indent=indent_s))
         
         return new_m_index
@@ -191,7 +194,7 @@ class RemoteExecutor(socket.socket):
                 if os.path.exists(f"{full_repo_path}/{pkg_foldername}"):
                     return "Module already exists."
 
-                self.terminal_command(*(f"source bin/activate && pip install {package} -t {full_repo_path}/TEMP-PKG",), absolute=True)
+                self.terminal_command(*(f"source bin/activate && pip install {package} -t {full_repo_path}/TEMP-PKG",), absolute=True, terminate=False)
 
                 time.sleep(1)
 
@@ -212,11 +215,15 @@ class RemoteExecutor(socket.socket):
             redirect_name = module_index.get(package, None)
 
             if redirect_name:
-                remove_without_error(f"{SITE_PACKAGES}/script_dependencies.pth")
-                shutil.rmtree(f"{DEP_LOCATION}/{repo}/{redirect_name}")
+                try:
+                    remove_without_error(f"{SITE_PACKAGES}/script_dependencies.pth")
+                    shutil.rmtree(f"{DEP_LOCATION}/{repo}/{redirect_name}")
 
-                return f"Removed {package} from {repo}."
-            return "No package with that name."
+                    return f"Removed {package} from {repo}."
+                except FileNotFoundError:
+                    return errors[4]
+
+            return errors[4]
 
         def _show_ops():
             return "opts - shows all pkg options\ninstall - Installs a package from PyPi\nuninstall - Removes a package\nshow - Shows all packages installed"
@@ -300,7 +307,6 @@ class RemoteExecutor(socket.socket):
             if sargs.strip() == command:
                 m = "Enter a valid full path to a python executable."
             else:
-                self.send_message("\n\n~~~ BEGIN SCRIPT~~~\n\n")
                 self.proc = subprocess.Popen(sargs, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=f"src/scripts/{REPO_NAME}")
                 while self.proc.poll() is None:
 
@@ -337,7 +343,7 @@ class RemoteExecutor(socket.socket):
         finally:
             self.send_message(m, True)
 
-    def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True, path: Union[os.PathLike, None, str]=None) -> tuple[str, Union[tuple[bytes, bytes], int]]:
+    def terminal_command(self, *args, quiet=False, absolute=False, send_to_client=True, path: Union[os.PathLike, None, str]=None, terminate: bool=True) -> tuple[str, Union[tuple[bytes, bytes], int]]:
         m = errors[1]
         m_proc = 1
         path = path if path else self.path
@@ -353,13 +359,11 @@ class RemoteExecutor(socket.socket):
         finally:
             if not quiet:
                 if isinstance(m, tuple):
-                    if m[0].decode():
-                        m = m[0].decode()
-                    else:
-                        m = m[1].decode()
+                    m = m[0].decode() if m[0].decode() else m[1].decode()
 
                 if send_to_client:
-                    self.send_message(m, terminate=True)
+                    self.send_message(m, terminate=terminate)
+
                 return (m, m_proc)
 
     def _disconnect_client_gracefully(self, *args):
@@ -368,6 +372,7 @@ class RemoteExecutor(socket.socket):
         self.client = None 
     
     def _update_pulse(self, *args):
+        print("Pulse")
         self.bump = True
 
     def download_repo(self, *args):
@@ -409,11 +414,12 @@ class RemoteExecutor(socket.socket):
     def process_client(self):
         
         try:
-            if self.client:
+            while self.client:
                 client_message = self.client.recv(1024).decode().split(" ")
                 command = client_message[0]
                 args = client_message[1:]
 
+                print(f"Command recieved from client: {command}")
                 self.command_list[command][0](*args) if command in self.command_list else "This command does not exist."
         except OSError:
             self.client = None
@@ -434,13 +440,20 @@ class RemoteExecutor(socket.socket):
                 def heartbeat():
                     while self.client != None:
                         for _ in range(30):
-                            if self.client: time.sleep(1); continue
-                            else: break
-
+                            if self.client: 
+                                time.sleep(1)
+                            else: 
+                                break
+                    
                         if self.bump == True:
-                            self.bump = False; continue
+                            self.bump = False
+                        else:
+                            break
                         
-                    print("Ending heartbeat with client.")
+                    if self.client:
+                        self._disconnect_client_gracefully()
+                        print("Ended heartbeat with client.")
+
                     self.client = None
                         
                 print(f"\n\n{'~'*15}\n\nConnection from {addr[0]}:{addr[1]}")
@@ -465,9 +478,7 @@ class RemoteExecutor(socket.socket):
                 # Welcome message
                 self.send_message(f"{config_object['WELCOME_MSG']}\n\n{config_object['NAME']} - Client Version: {self.client_info['ver']} Server Version: {config_object['VERSION']} - {__AUTHOR__}", True)
                 Thread(target=heartbeat).start()
-
-                while self.client:
-                    self.process_client()
+                self.process_client()
             
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 print(f"{addr[0]} Disconnected Forcefully.")
